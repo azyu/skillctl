@@ -75,7 +75,7 @@ impl PlanOperation {
 }
 
 pub fn build_plan(
-    target_root: &Path,
+    _target_root: &Path,
     lock: &TargetLock,
     desired: Vec<DesiredLink>,
 ) -> Result<Plan> {
@@ -151,10 +151,56 @@ pub fn build_plan(
         }
     }
 
-    errors.extend(unmanaged_conflicts(target_root, lock, &desired_names)?);
     errors.sort();
     errors.dedup();
     Ok(Plan { operations, errors })
+}
+
+pub fn build_plan_rejecting_unmanaged_entries(
+    target_root: &Path,
+    lock: &TargetLock,
+    desired: Vec<DesiredLink>,
+) -> Result<Plan> {
+    let desired_names = desired
+        .iter()
+        .map(|item| item.target_name.clone())
+        .collect::<BTreeSet<_>>();
+    let mut plan = build_plan(target_root, lock, desired)?;
+    plan.errors
+        .extend(unmanaged_conflicts(target_root, lock, &desired_names)?);
+    plan.errors.sort();
+    plan.errors.dedup();
+    Ok(plan)
+}
+
+fn unmanaged_conflicts(
+    target_root: &Path,
+    lock: &TargetLock,
+    desired_names: &BTreeSet<String>,
+) -> Result<Vec<String>> {
+    if !target_root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut errors = Vec::new();
+    for entry in fs::read_dir(target_root).map_err(|source| SkillctlError::Fs {
+        path: target_root.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| SkillctlError::Fs {
+            path: target_root.to_path_buf(),
+            source,
+        })?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == ".skillctl.lock.json"
+            || desired_names.contains(&name)
+            || lock.managed.contains_key(&name)
+        {
+            continue;
+        }
+        errors.push(format!("unmanaged conflict at {}", entry.path().display()));
+    }
+    errors.sort();
+    Ok(errors)
 }
 
 pub fn apply_plan(plan: &Plan) -> Result<()> {
@@ -186,36 +232,6 @@ pub fn apply_plan(plan: &Plan) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn unmanaged_conflicts(
-    target_root: &Path,
-    lock: &TargetLock,
-    desired_names: &BTreeSet<String>,
-) -> Result<Vec<String>> {
-    if !target_root.exists() {
-        return Ok(Vec::new());
-    }
-    let mut errors = Vec::new();
-    for entry in fs::read_dir(target_root).map_err(|source| SkillctlError::Fs {
-        path: target_root.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| SkillctlError::Fs {
-            path: target_root.to_path_buf(),
-            source,
-        })?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == ".skillctl.lock.json"
-            || desired_names.contains(&name)
-            || lock.managed.contains_key(&name)
-        {
-            continue;
-        }
-        errors.push(format!("unmanaged conflict at {}", entry.path().display()));
-    }
-    errors.sort();
-    Ok(errors)
 }
 
 pub fn validate_remove_stale_ownership(
@@ -297,7 +313,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn plan_distinguishes_managed_updates_from_unmanaged_conflicts() {
+    fn plan_ignores_unrelated_unmanaged_target_entries() {
         let temp = tempfile::tempdir().unwrap();
         let target_root = temp.path().join("target");
         let rendered_root = temp.path().join("rendered");
@@ -332,8 +348,7 @@ mod tests {
         let plan = build_plan(&target_root, &lock, desired).unwrap();
         assert_eq!(plan.operations.len(), 1);
         assert_eq!(plan.operations[0].label(), "UPDATE");
-        assert!(plan.errors.iter().all(|error| !error.contains("sample")));
-        assert!(plan.errors.iter().any(|error| error.contains("other")));
+        assert!(plan.errors.is_empty());
     }
 
     #[test]

@@ -3,15 +3,45 @@ use predicates::prelude::*;
 use std::path::{Path, PathBuf};
 
 #[test]
-fn help_prints_skillctl_commands() {
+fn help_prints_skillctl_commands_and_quick_start() {
     let mut cmd = Command::cargo_bin("skillctl").unwrap();
     cmd.arg("--help")
         .assert()
         .success()
         .stdout(predicates::str::contains("skillctl"))
+        .stdout(predicates::str::contains("Materialize Agent Skills"))
         .stdout(predicates::str::contains("plan"))
         .stdout(predicates::str::contains("apply"))
-        .stdout(predicates::str::contains("doctor"));
+        .stdout(predicates::str::contains("doctor"))
+        .stdout(predicates::str::contains("version"))
+        .stdout(predicates::str::contains("Quick start:"))
+        .stdout(predicates::str::contains("skillctl plan"))
+        .stdout(predicates::str::contains("skillctl apply"));
+}
+
+#[test]
+fn no_args_prints_root_help() {
+    let mut cmd = Command::cargo_bin("skillctl").unwrap();
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("Usage: skillctl"))
+        .stdout(predicates::str::contains("Quick start:"));
+}
+
+#[test]
+fn version_prints_metadata() {
+    for arg in ["--version", "-V", "version"] {
+        let mut cmd = Command::cargo_bin("skillctl").unwrap();
+        cmd.arg(arg)
+            .assert()
+            .success()
+            .stdout(predicates::str::contains(format!(
+                "skillctl version {}",
+                env!("CARGO_PKG_VERSION")
+            )))
+            .stdout(predicates::str::contains("commit:"))
+            .stdout(predicates::str::contains("built:"));
+    }
 }
 
 #[test]

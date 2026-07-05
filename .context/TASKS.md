@@ -182,3 +182,28 @@ updated: 2026-07-05
   - Read `/Volumes/EXTSSD/code/personal/tossinvest-cli/AGENTS.md` and `/Volumes/EXTSSD/code/personal/bitbucket-cli/AGENTS.md` for reusable workflow guidance.
   - Updated `AGENTS.md` to remove stale “planned Rust CLI” wording and add current structure, document roles, update rules, focused verification/TDD guidance, and secrets/local-state cautions.
   - Read back `AGENTS.md` and confirmed it avoids Bitbucket/Toss domain rules and unsupported `skillctl` commands.
+- 2026-07-05: Home skill adoption verification passed:
+  - Scanned valid skill directories under `~/.agents/skills`, `~/.claude/skills`, and `~/.codex/skills`: 18 agent skills, 4 Claude skills, and 13 Codex skills with `SKILL.md`.
+  - Identified exact-name common skill `recap` across Claude/Codex and semantic common resume pair `resume-session` (Claude) / `session-resume` (Codex). No exact common skill was present in `~/.agents/skills`.
+  - Added target-variant resource rendering for `references/`, `scripts/`, `agents/`, `assets/`, and `examples/`; `cargo test --manifest-path rust/Cargo.toml --all` passed 38 tests across 4 suites.
+  - Created canonical packages under `~/.skillctl/skills/recap` and `~/.skillctl/skills/resume-session`, with runtime-specific resources under `variants/claude` and `variants/codex`.
+  - Backed up replaced unmanaged target directories to `/Users/azyu/.skillctl/adoption-backups/20260705-120109`.
+  - `/Users/azyu/.local/bin/skillctl plan` first reported only the four desired-path conflicts, then after backup reported four `CREATE` operations.
+  - `/Users/azyu/.local/bin/skillctl apply` created symlinks for Claude `recap`, Claude `resume-session`, Codex `recap`, and Codex `session-resume`.
+  - Post-apply `/Users/azyu/.local/bin/skillctl plan` printed `No changes.`
+  - Verified symlink targets and resources: Claude `resume-session` has `scripts/sessions.mjs`; Codex `recap` has `agents/openai.yaml`; Codex `session-resume` has `scripts/prepare_resume.py` and `agents/openai.yaml`.
+  - Compared adopted target files against backup copies; all migrated `SKILL.md`, `scripts/`, and `agents/` files matched their backups byte-for-byte.
+- 2026-07-05: CLI help/version metadata verification passed:
+  - Compared reference CLI discipline in `/Volumes/EXTSSD/code/personal/bitbucket-cli/rust/bb-cli/src/cli.rs`, `/Volumes/EXTSSD/code/personal/bitbucket-cli/rust/bb-core/src/version.rs`, `/Volumes/EXTSSD/code/personal/tossinvest-cli/rust/toss-cli/src/cli.rs`, and `/Volumes/EXTSSD/code/personal/tossinvest-cli/rust/toss-cli/src/main.rs`.
+  - Added smoke coverage for `skillctl --help`, no-arg `skillctl`, `skillctl --version`, `skillctl -V`, and `skillctl version`.
+  - Added CLI build metadata via `rust/skillctl-cli/build.rs` and root help Quick start / command descriptions in `rust/skillctl-cli/src/cli.rs`.
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed 40 tests across 4 suites.
+  - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help` and no-arg `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl` printed root help with subcommand descriptions and Quick start guidance.
+  - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --version` and `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- version` printed `skillctl version`, `commit:`, and `built:`.
+  - `cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release` succeeded, then `rust/target/release/skillctl` was copied to `/Users/azyu/.local/bin/skillctl`.
+  - Installed `/Users/azyu/.local/bin/skillctl --help`, no-arg `/Users/azyu/.local/bin/skillctl`, `/Users/azyu/.local/bin/skillctl --version`, and `/Users/azyu/.local/bin/skillctl version` printed the expected help/version metadata.
+- 2026-07-05: Pre-commit restored work verification passed:
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed: 40 tests across 4 suites.
+  - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help` printed root help with `plan`, `apply`, `doctor`, `list`, `prune`, `version`, and `unlink`, plus Quick start guidance.

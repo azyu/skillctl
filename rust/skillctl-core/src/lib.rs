@@ -40,7 +40,12 @@ pub fn run(request: Request) -> Result<CommandOutput> {
 }
 
 fn run_plan(root: &Path, config: &config::Config) -> Result<CommandOutput> {
-    let target_plans = build_target_plans(root, config, TargetSelection::EnabledOnly)?;
+    let target_plans = build_target_plans(
+        root,
+        config,
+        TargetSelection::EnabledOnly,
+        UnmanagedPolicy::DesiredOnly,
+    )?;
     let mut output = String::new();
     for target_plan in &target_plans {
         output.push_str(&render_plan_for_target(
@@ -67,7 +72,12 @@ fn run_plan(root: &Path, config: &config::Config) -> Result<CommandOutput> {
 }
 
 fn run_apply(root: &Path, config: &config::Config) -> Result<CommandOutput> {
-    let mut target_plans = build_target_plans(root, config, TargetSelection::EnabledOnly)?;
+    let mut target_plans = build_target_plans(
+        root,
+        config,
+        TargetSelection::EnabledOnly,
+        UnmanagedPolicy::DesiredOnly,
+    )?;
     let errors = collect_plan_errors(&target_plans);
     if !errors.is_empty() {
         return Ok(CommandOutput::failure(errors, 1));
@@ -131,7 +141,12 @@ fn run_list(config: &config::Config) -> Result<CommandOutput> {
 }
 
 fn run_prune(root: &Path, config: &config::Config) -> Result<CommandOutput> {
-    let mut target_plans = build_target_plans(root, config, TargetSelection::AllConfigured)?;
+    let mut target_plans = build_target_plans(
+        root,
+        config,
+        TargetSelection::AllConfigured,
+        UnmanagedPolicy::RejectUnrelated,
+    )?;
     let errors = collect_plan_errors(&target_plans);
     if !errors.is_empty() {
         return Ok(CommandOutput::failure(errors, 1));
@@ -248,6 +263,12 @@ enum TargetSelection {
     AllConfigured,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum UnmanagedPolicy {
+    DesiredOnly,
+    RejectUnrelated,
+}
+
 struct TargetPlan {
     target_name: String,
     lock_path: PathBuf,
@@ -267,6 +288,7 @@ fn build_target_plans(
     root: &Path,
     config: &config::Config,
     selection: TargetSelection,
+    unmanaged_policy: UnmanagedPolicy,
 ) -> Result<Vec<TargetPlan>> {
     let mut plans = Vec::new();
     for (target_name, target) in selected_targets(config, selection) {
@@ -274,7 +296,12 @@ fn build_target_plans(
         let lock =
             TargetLock::read_or_empty(&lock_path, target_name, &root.join("skills"), &target.path)?;
         let (desired, resolved) = desired_for_target(root, config, target_name, &target.path)?;
-        let plan = plan::build_plan(&target.path, &lock, desired.clone())?;
+        let plan = match unmanaged_policy {
+            UnmanagedPolicy::DesiredOnly => plan::build_plan(&target.path, &lock, desired.clone())?,
+            UnmanagedPolicy::RejectUnrelated => {
+                plan::build_plan_rejecting_unmanaged_entries(&target.path, &lock, desired.clone())?
+            }
+        };
         plans.push(TargetPlan {
             target_name: target_name.to_string(),
             lock_path,

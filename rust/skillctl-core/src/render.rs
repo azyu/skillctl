@@ -1,8 +1,11 @@
 use crate::error::{Result, SkillctlError};
 use crate::resolve::ResolvedSkill;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+const RESOURCE_DIRS: &[&str] = &["references", "scripts", "agents", "assets", "examples"];
 
 pub fn render_skill(_root: &Path, rendered_root: &Path, skill: &ResolvedSkill) -> Result<PathBuf> {
     let rendered = rendered_root.join(&skill.target).join(&skill.target_name);
@@ -20,33 +23,23 @@ pub fn render_skill(_root: &Path, rendered_root: &Path, skill: &ResolvedSkill) -
         &skill.source_dir.join("SKILL.md"),
         &rendered.join("SKILL.md"),
     )?;
-    copy_optional_dir(
-        &skill.package_dir.join("references"),
-        &rendered.join("references"),
-    )?;
-    copy_optional_dir(
-        &skill.package_dir.join("scripts"),
-        &rendered.join("scripts"),
-    )?;
+    copy_resource_dirs(&skill.package_dir, &rendered)?;
+    if skill.source_dir != skill.package_dir {
+        copy_resource_dirs(&skill.source_dir, &rendered)?;
+    }
     Ok(rendered)
 }
 
 pub fn resolved_source_digest(skill: &ResolvedSkill) -> Result<String> {
-    let mut files = Vec::new();
+    let mut files = BTreeMap::new();
     let skill_file = skill.source_dir.join("SKILL.md");
     if skill_file.exists() {
-        files.push((PathBuf::from("SKILL.md"), skill_file));
+        files.insert(PathBuf::from("SKILL.md"), skill_file);
     }
-    collect_files_with_prefix(
-        &skill.package_dir.join("references"),
-        Path::new("references"),
-        &mut files,
-    )?;
-    collect_files_with_prefix(
-        &skill.package_dir.join("scripts"),
-        Path::new("scripts"),
-        &mut files,
-    )?;
+    collect_resource_files(&skill.package_dir, &mut files)?;
+    if skill.source_dir != skill.package_dir {
+        collect_resource_files(&skill.source_dir, &mut files)?;
+    }
     digest_named_files(files)
 }
 
@@ -59,11 +52,15 @@ pub fn tree_digest(root: &Path) -> Result<String> {
             let path = root.join(&relative);
             (relative, path)
         })
-        .collect();
+        .collect::<Vec<_>>();
     digest_named_files(files)
 }
 
-fn digest_named_files(mut files: Vec<(PathBuf, PathBuf)>) -> Result<String> {
+fn digest_named_files<I>(files: I) -> Result<String>
+where
+    I: IntoIterator<Item = (PathBuf, PathBuf)>,
+{
+    let mut files = files.into_iter().collect::<Vec<_>>();
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut hasher = Sha256::new();
@@ -104,10 +101,17 @@ fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Resul
     Ok(())
 }
 
+fn collect_resource_files(root: &Path, files: &mut BTreeMap<PathBuf, PathBuf>) -> Result<()> {
+    for resource_dir in RESOURCE_DIRS {
+        collect_files_with_prefix(&root.join(resource_dir), Path::new(resource_dir), files)?;
+    }
+    Ok(())
+}
+
 fn collect_files_with_prefix(
     root: &Path,
     prefix: &Path,
-    files: &mut Vec<(PathBuf, PathBuf)>,
+    files: &mut BTreeMap<PathBuf, PathBuf>,
 ) -> Result<()> {
     if !root.exists() {
         return Ok(());
@@ -115,7 +119,14 @@ fn collect_files_with_prefix(
     let mut relative_files = Vec::new();
     collect_files(root, root, &mut relative_files)?;
     for relative in relative_files {
-        files.push((prefix.join(&relative), root.join(relative)));
+        files.insert(prefix.join(&relative), root.join(relative));
+    }
+    Ok(())
+}
+
+fn copy_resource_dirs(source: &Path, dest: &Path) -> Result<()> {
+    for resource_dir in RESOURCE_DIRS {
+        copy_optional_dir(&source.join(resource_dir), &dest.join(resource_dir))?;
     }
     Ok(())
 }
@@ -231,6 +242,72 @@ mod tests {
             fs::read_to_string(rendered.join("scripts/common.sh")).unwrap(),
             "echo common"
         );
+    }
+
+    #[test]
+    fn includes_target_variant_resources() {
+        let temp = tempfile::tempdir().unwrap();
+        let package = temp.path().join("skills/sample");
+        let variant = package.join("variants/codex");
+        fs::create_dir_all(package.join("scripts")).unwrap();
+        fs::create_dir_all(variant.join("scripts")).unwrap();
+        fs::create_dir_all(variant.join("agents")).unwrap();
+        fs::write(
+            variant.join("SKILL.md"),
+            "---\nname: sample\ndescription: Codex\n---\nCodex\n",
+        )
+        .unwrap();
+        fs::write(package.join("scripts/common.sh"), "echo common").unwrap();
+        fs::write(variant.join("scripts/prepare.py"), "print('resume')").unwrap();
+        fs::write(variant.join("agents/openai.yaml"), "display_name: Recap").unwrap();
+
+        let resolved = ResolvedSkill {
+            id: "sample".to_string(),
+            target: "codex".to_string(),
+            target_name: "sample".to_string(),
+            package_dir: package,
+            source_dir: variant,
+            fallback_used: false,
+        };
+
+        let rendered = render_skill(temp.path(), &temp.path().join("rendered"), &resolved).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(rendered.join("scripts/common.sh")).unwrap(),
+            "echo common"
+        );
+        assert_eq!(
+            fs::read_to_string(rendered.join("scripts/prepare.py")).unwrap(),
+            "print('resume')"
+        );
+        assert_eq!(
+            fs::read_to_string(rendered.join("agents/openai.yaml")).unwrap(),
+            "display_name: Recap"
+        );
+    }
+
+    #[test]
+    fn resolved_source_digest_tracks_target_variant_resources() {
+        let temp = tempfile::tempdir().unwrap();
+        let package = temp.path().join("skills/sample");
+        let variant = package.join("variants/codex");
+        fs::create_dir_all(variant.join("scripts")).unwrap();
+        fs::write(variant.join("SKILL.md"), "---\nname: sample\n---\nCodex\n").unwrap();
+        fs::write(variant.join("scripts/prepare.py"), "first").unwrap();
+        let resolved = ResolvedSkill {
+            id: "sample".to_string(),
+            target: "codex".to_string(),
+            target_name: "sample".to_string(),
+            package_dir: package,
+            source_dir: variant.clone(),
+            fallback_used: false,
+        };
+
+        let first = resolved_source_digest(&resolved).unwrap();
+        fs::write(variant.join("scripts/prepare.py"), "changed").unwrap();
+        let changed = resolved_source_digest(&resolved).unwrap();
+
+        assert_ne!(first, changed);
     }
 
     #[test]

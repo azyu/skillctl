@@ -11,10 +11,10 @@
 - Symlink materialization into runtime target directories such as `~/.claude/skills` and `~/.agents/skills`
 - YAML-only v1 config at `~/.skillctl/config.yaml`
 - Target variant resolution with common `SKILL.md` fallback
-- Package-level `references/` and `scripts/` inclusion in rendered skills
+- Package-level and target-variant resource directory rendering for `references/`, `scripts/`, `agents/`, `assets/`, and `examples/`
 - Per-target `.skillctl.lock.json` ownership tracking
 - Deterministic `plan` output with `CREATE`, `UPDATE`, `REMOVE_STALE`, and `ERROR`
-- Safe `apply`, `prune`, and `unlink` behavior that refuses unmanaged conflicts and managed-path drift before mutation
+- Safe `apply`, `prune`, and `unlink` behavior that refuses desired-path conflicts and managed-path drift before mutation
 - `doctor` diagnostics for lockfile ownership, missing paths, drifted symlinks, missing rendered trees, and unmanaged target conflicts
 
 ## Status
@@ -59,6 +59,7 @@ doctor
 list
 prune
 unlink
+version
 ```
 
 ## Quick Start
@@ -86,17 +87,19 @@ Optional shared resources can live beside `SKILL.md`:
 └── scripts/
 ```
 
-Target-specific variants can override `SKILL.md`:
+Target-specific variants can override `SKILL.md` and target-specific resource directories:
 
 ```text
 ~/.skillctl/skills/example-skill/
 ├── SKILL.md
+├── references/
 └── variants/
     └── claude/
-        └── SKILL.md
+        ├── SKILL.md
+        └── scripts/
 ```
 
-Current v1 rendering rule: `skillctl` uses the selected target variant's `SKILL.md` when present, falls back to the common `SKILL.md`, and includes package-level `references/` and `scripts/` in the rendered skill. Variant-level resource merge/override is intentionally out of scope for the current implementation.
+Current v1 rendering rule: `skillctl` uses the selected target variant's `SKILL.md` when present, falls back to the common `SKILL.md`, copies package-level resource directories, then overlays the selected variant's resource directories. Supported resource directory names are `references/`, `scripts/`, `agents/`, `assets/`, and `examples/`.
 
 ### 2. Write config
 
@@ -150,7 +153,7 @@ Plan output is deterministic and uses these labels:
 skillctl apply
 ```
 
-`apply` resolves skills, computes digests, builds the plan, aborts before mutation if plan errors exist, renders packages under `~/.skillctl/rendered/`, creates or updates target symlinks, and writes each target's `.skillctl.lock.json`.
+`apply` resolves skills, computes digests, builds the plan, aborts before mutation if desired target paths conflict or managed paths drift, renders packages under `~/.skillctl/rendered/`, creates or updates target symlinks, and writes each target's `.skillctl.lock.json`.
 
 ### 5. Check health
 
@@ -177,6 +180,7 @@ skillctl doctor
 | `skillctl apply` | render desired skills, materialize target symlinks, update lockfiles |
 | `skillctl doctor` | inspect source roots, target roots, lockfiles, symlinks, and conflicts |
 | `skillctl prune` | remove stale lockfile-managed symlinks only |
+| `skillctl version` | show CLI version, commit, and build timestamp |
 | `skillctl unlink <skill>` | remove lockfile-managed target symlinks for one skill |
 | `skillctl unlink <skill> --target <target>` | remove one skill from one configured target |
 
@@ -194,7 +198,7 @@ skillctl doctor
 
 Mutation commands follow these rules:
 
-- unmanaged target conflicts fail before mutation
+- desired target path conflicts fail before mutation; unrelated unmanaged target entries are left untouched by `plan` and `apply`
 - managed target replacement requires the existing path to be missing or still symlink to the lockfile's expected rendered path
 - stale removal only removes paths recorded in the lockfile and still matching expected ownership
 - drifted regular files, foreign symlinks, and foreign lockfiles are reported instead of overwritten
@@ -207,6 +211,7 @@ Run focused verification from the repository root:
 cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 cargo test --manifest-path rust/Cargo.toml --all
 cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help
+cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --version
 ```
 
 Build and install the release binary locally:
@@ -215,6 +220,7 @@ Build and install the release binary locally:
 cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release
 cp rust/target/release/skillctl ~/.local/bin/skillctl
 ~/.local/bin/skillctl --help
+~/.local/bin/skillctl --version
 ```
 
 ## Project Docs

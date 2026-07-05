@@ -3,6 +3,7 @@ name = "skillctl-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "skillctl"
