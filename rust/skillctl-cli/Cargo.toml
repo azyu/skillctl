@@ -1,0 +1,18 @@
+[package]
+name = "skillctl-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "skillctl"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+skillctl-core = { path = "../skillctl-core" }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
+predicates = "3.1.3"

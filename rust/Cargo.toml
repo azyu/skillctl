@@ -1,0 +1,22 @@
+[workspace]
+members = ["skillctl-cli", "skillctl-core"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+clap = { version = "4.5.32", features = ["derive", "env"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde_yaml = "0.9.34"
+sha2 = "0.10.8"
+thiserror = "2.0.12"
+
+[workspace.dependencies.assert_cmd]
+version = "2.0.17"
+
+[workspace.dependencies.tempfile]
+version = "3.19.1"
