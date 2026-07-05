@@ -230,12 +230,12 @@ updated: 2026-07-05
   - Updated `README.md` as the English README with a language switcher and actual `skillctl` install, quick start, command, config, safety, and development guidance.
   - Created `README.ko-kr.MD` as the Korean README with matching sections and no unsupported install channels or commands.
 - 2026-07-05: Release workflow and Homebrew tap setup verification passed:
-  - Added `.github/workflows/release-build.yml` with tag/manual release triggers, five platform build matrix entries, GitHub Release publishing, and `HOMEBREW_TAP_TOKEN`-gated `azyu/homebrew-tap` formula updates.
+  - Added `.github/workflows/release-build.yml` with tag/manual release triggers, three Unix platform build matrix entries, GitHub Release publishing, and `HOMEBREW_TAP_TOKEN`-gated `azyu/homebrew-tap` formula updates.
   - Added repository `Makefile` targets for `build`, `install`, `test`, `fmt`, `lint`, `clean`, and `help`.
   - Added `/Volumes/EXTSSD/code/personal/homebrew-tap/skillctl.rb.template` using release archive URLs for macOS arm64, Linux amd64, and Linux arm64.
   - Updated English/Korean README install sections with Homebrew instructions guarded by the tagged-release/tap-publication prerequisite.
   - `actionlint .github/workflows/release-build.yml` passed.
-  - YAML parse check confirmed workflow jobs `build`, `release`, and `homebrew-tap`, five build matrix entries, and `HOMEBREW_TAP_TOKEN` wiring.
+  - YAML parse check confirmed workflow jobs `build`, `release`, and `homebrew-tap`, three Unix build matrix entries, and `HOMEBREW_TAP_TOKEN` wiring.
   - `ruby -c /Volumes/EXTSSD/code/personal/homebrew-tap/skillctl.rb.template` printed `Syntax OK`.
   - `make help` printed all expected repository helper targets.
   - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
@@ -244,3 +244,6 @@ updated: 2026-07-05
   - Read-only inventory checked 62 `azyu` repositories and found existing `HOMEBREW_TAP_TOKEN` secrets in `azyu/kis-cli`, `azyu/tossinvest-cli`, and `azyu/bb-cli`.
   - Rotated `HOMEBREW_TAP_TOKEN` in `azyu/kis-cli`, `azyu/tossinvest-cli`, and `azyu/bb-cli`, and added it to `azyu/skillctl`.
   - `gh secret list` reported `HOMEBREW_TAP_TOKEN` updated at `2026-07-05T07:48:31Z` for all four repositories.
+- 2026-07-05: Initial `v0.1.0` release attempt exposed unsupported Windows targets:
+  - Pushed tag `v0.1.0`; GitHub Actions run `28734347224` failed in `windows-x64` and `windows-arm64` because `skillctl-core::fs::create_symlink_dir` is Unix-gated.
+  - Release workflow was narrowed to supported Unix targets: macOS arm64, Linux amd64, and Linux arm64.
