@@ -262,3 +262,7 @@ updated: 2026-07-05
   - Compared `skillctl` install docs with `/Volumes/EXTSSD/code/personal/bitbucket-cli/README.md` and `README.ko-kr.MD`.
   - Updated English and Korean README install sections to show direct `brew install azyu/tap/skillctl`, release archive links, Unix release asset names, and `make install` source build flow.
   - Read back `README.md` and `README.ko-kr.MD` install sections and confirmed they no longer describe Homebrew as pre-publication-only.
+- 2026-07-05: Korean README wording cleanup verification passed:
+  - Rewrote `README.ko-kr.MD` prose to replace awkward English terms such as `canonical source`, `materialize`, `fallback`, `overlay`, and `deterministic` with natural Korean wording while keeping command names, file names, and config keys unchanged.
+  - Grep check found no remaining matches for the targeted awkward English terms in `README.ko-kr.MD`.
+  - Read back the introduction, quick start, command overview, and safety model sections.
