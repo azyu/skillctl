@@ -1,5 +1,9 @@
 # skillctl
 
+[![CI](https://github.com/azyu/skillctl/actions/workflows/ci.yml/badge.svg)](https://github.com/azyu/skillctl/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/azyu/skillctl)](https://github.com/azyu/skillctl/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [English](README.md) | [한국어](README.ko-kr.MD)
 
 > Rust로 작성된, 파일시스템 안전성을 우선하는 작은 Agent Skills 배포 CLI입니다.

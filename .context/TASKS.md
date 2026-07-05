@@ -266,3 +266,10 @@ updated: 2026-07-05
   - Rewrote `README.ko-kr.MD` prose to replace awkward English terms such as `canonical source`, `materialize`, `fallback`, `overlay`, and `deterministic` with natural Korean wording while keeping command names, file names, and config keys unchanged.
   - Grep check found no remaining matches for the targeted awkward English terms in `README.ko-kr.MD`.
   - Read back the introduction, quick start, command overview, and safety model sections.
+- 2026-07-05: README badge and CI workflow verification passed:
+  - Added `.github/workflows/ci.yml` with Rust formatting and test checks for pushes and pull requests on `main`.
+  - Added CI, latest release, and MIT license badges to `README.md` and `README.ko-kr.MD`, following the `bitbucket-cli` badge layout.
+  - Read back both README headers and confirmed the badge links point to `azyu/skillctl` workflow, releases, and `LICENSE`.
+  - `actionlint .github/workflows/ci.yml .github/workflows/release-build.yml` passed.
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed: 40 tests across 4 suites.
