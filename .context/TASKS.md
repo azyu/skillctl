@@ -9,7 +9,7 @@ updated: 2026-07-05
 | Phase | Status | Evidence |
 |---|---|---|
 | Planning and context bootstrap | Complete | `.context/PROJECT.md`, `.context/STEERING.md`, `.context/TASKS.md`, `AGENTS.md`, and `docs/superpowers/plans/2026-07-05-skillctl.md` were written. |
-| Rust implementation | In progress | Initial Rust workspace and command orchestration completed; full lock-backed `apply`, `prune`, and `unlink` hardening remains pending. `cargo test --manifest-path rust/Cargo.toml --all` passed 12 tests on 2026-07-05. |
+| Rust implementation | In progress | Initial Rust workspace and command orchestration completed; release binary copied to `~/.local/bin/skillctl`; full lock-backed `apply`, `prune`, and `unlink` hardening remains pending. `cargo test --manifest-path rust/Cargo.toml --all` passed 12 tests on 2026-07-05. |
 
 ## Completed Work
 
@@ -28,6 +28,7 @@ updated: 2026-07-05
 - [x] Implemented apply abort-on-error behavior and filesystem symlink helper.
 - [x] Implemented doctor diagnostics and expanded CLI smoke coverage.
 - [x] Wired initial `plan`, `doctor`, `list`, `apply`, `prune`, and `unlink` command outputs through core orchestration.
+- [x] Built release binary and copied it to `~/.local/bin/skillctl`.
 
 ## Pending Observable Work
 
@@ -41,7 +42,7 @@ updated: 2026-07-05
 - [x] Implement initial `doctor`, `list`, `prune`, and `unlink` command surfaces.
 - [x] Add CLI smoke tests and core behavior tests.
 - [x] Run focused verification commands and record observed results here.
-- [ ] Fully wire lock-backed `apply`, `prune`, and `unlink` mutations before release.
+- [ ] Fully wire lock-backed `apply`, `prune`, and `unlink` mutations before full release.
 
 ## Verification Results
 
@@ -84,3 +85,10 @@ updated: 2026-07-05
   - `cargo test --manifest-path rust/Cargo.toml --all` passed (12 tests across 4 suites).
   - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
   - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+- 2026-07-05: Git and local release install verification passed:
+  - `git log --oneline --decorate -5` showed logical commits ending at `2a5695b (HEAD -> main) feat: wire initial skillctl commands`.
+  - `cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release` succeeded.
+  - Copied `rust/target/release/skillctl` to `~/.local/bin/skillctl`.
+  - `~/.local/bin/skillctl --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed (12 tests across 4 suites).
+  - `git status --short` was clean before recording this context update.
