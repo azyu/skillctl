@@ -247,3 +247,6 @@ updated: 2026-07-05
 - 2026-07-05: Initial `v0.1.0` release attempt exposed unsupported Windows targets:
   - Pushed tag `v0.1.0`; GitHub Actions run `28734347224` failed in `windows-x64` and `windows-arm64` because `skillctl-core::fs::create_symlink_dir` is Unix-gated.
   - Release workflow was narrowed to supported Unix targets: macOS arm64, Linux amd64, and Linux arm64.
+- 2026-07-05: Successful `v0.1.0` release run exposed a Homebrew tap commit guard bug:
+  - GitHub Actions run `28734454485` succeeded for Unix archives and published GitHub Release assets, but did not create `skillctl.rb` in `azyu/homebrew-tap` because `git diff --quiet -- skillctl.rb` ignored the untracked formula file.
+  - Updated the tap commit guard to use `git status --short -- skillctl.rb` so newly generated formula files are committed.
