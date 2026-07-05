@@ -250,3 +250,11 @@ updated: 2026-07-05
 - 2026-07-05: Successful `v0.1.0` release run exposed a Homebrew tap commit guard bug:
   - GitHub Actions run `28734454485` succeeded for Unix archives and published GitHub Release assets, but did not create `skillctl.rb` in `azyu/homebrew-tap` because `git diff --quiet -- skillctl.rb` ignored the untracked formula file.
   - Updated the tap commit guard to use `git status --short -- skillctl.rb` so newly generated formula files are committed.
+- 2026-07-05: `v0.1.0` release verification passed:
+  - Re-pushed tag `v0.1.0` at commit `c18253c` after narrowing release targets to Unix platforms and fixing the tap formula commit guard.
+  - GitHub Actions run `28734628882` completed successfully: macOS arm64, Linux amd64, Linux arm64 builds passed; GitHub Release publish passed; Homebrew tap update passed.
+  - GitHub Release `https://github.com/azyu/skillctl/releases/tag/v0.1.0` is published, non-draft, and non-prerelease, with `checksums.txt`, `skillctl_0.1.0_macos_arm64.tar.gz`, `skillctl_0.1.0_linux_amd64.tar.gz`, and `skillctl_0.1.0_linux_arm64.tar.gz`.
+  - Pulled `/Volumes/EXTSSD/code/personal/homebrew-tap` and verified generated `skillctl.rb` version `0.1.0` with SHA256 values matching release asset digests.
+  - `ruby -c skillctl.rb` in the tap repo printed `Syntax OK`.
+  - `brew update` reported new formula `azyu/tap/skillctl`; `brew fetch --formula azyu/tap/skillctl` succeeded.
+  - `brew install azyu/tap/skillctl` installed `/opt/homebrew/Cellar/skillctl/0.1.0`; explicit brewed binary `/opt/homebrew/opt/skillctl/bin/skillctl version` printed `skillctl version 0.1.0+c18253c`.
