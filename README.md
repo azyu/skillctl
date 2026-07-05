@@ -1,5 +1,7 @@
 # skillctl
 
+[English](README.md) | [한국어](README.ko-kr.MD)
+
 > A small, filesystem-safe Agent Skills materialization CLI built in Rust.
 
 `skillctl` keeps `~/.skillctl/` as the canonical source of Agent Skills and materializes complete runtime-specific skill directories for tools such as Claude Code and Codex.
@@ -17,23 +19,18 @@
 - Safe `apply`, `prune`, and `unlink` behavior that refuses desired-path conflicts and managed-path drift before mutation
 - `doctor` diagnostics for lockfile ownership, missing paths, drifted symlinks, missing rendered trees, and unmanaged target conflicts
 
-## Status
-
-The Rust workspace is implemented under `rust/`:
-
-```text
-rust/
-├── skillctl-core/   # config, validation, rendering, planning, applying, lockfiles, doctor
-└── skillctl-cli/    # clap parser, command dispatch, process output
-```
-
-The current local release binary is installed at:
-
-```text
-~/.local/bin/skillctl
-```
-
 ## Installation
+
+### Homebrew
+
+After a tagged release has published the Homebrew tap formula:
+
+```bash
+brew install azyu/tap/skillctl
+```
+
+The release workflow updates `azyu/homebrew-tap` when the repository secret `HOMEBREW_TAP_TOKEN` is configured.
+
 
 ### From source
 
@@ -123,13 +120,6 @@ skills:
     expose: [claude, codex]
 ```
 
-Config validation enforces:
-
-- `version: 1`
-- every `skills.*.expose` target exists in `targets`
-- v1 policy values only
-- skill paths stay inside `~/.skillctl/`
-
 ### 3. Inspect the plan
 
 ```bash
@@ -161,15 +151,7 @@ skillctl apply
 skillctl doctor
 ```
 
-`doctor` reports:
-
-- missing source or target roots
-- foreign or invalid lockfiles
-- missing managed target paths
-- managed paths that are not symlinks
-- managed symlink target mismatches
-- missing rendered paths
-- unmanaged target conflicts
+`doctor` reports source roots, target roots, lockfiles, managed paths, rendered paths, symlink drift, and unmanaged target conflicts.
 
 ## Command Overview
 
@@ -184,7 +166,14 @@ skillctl doctor
 | `skillctl unlink <skill>` | remove lockfile-managed target symlinks for one skill |
 | `skillctl unlink <skill> --target <target>` | remove one skill from one configured target |
 
-## Safety Model
+## Configuration and Safety
+
+Config validation enforces:
+
+- `version: 1`
+- every `skills.*.expose` target exists in `targets`
+- v1 policy values only
+- skill paths stay inside `~/.skillctl/`
 
 `skillctl` separates source, rendered output, and runtime targets:
 

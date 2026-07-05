@@ -37,6 +37,9 @@ updated: 2026-07-05
 - [x] Created `README.md` using the project state and the `tossinvest-cli` / `bitbucket-cli` README structure as references.
 - [x] Updated `AGENTS.md` with current project structure, document roles, context update rules, verification guidance, TDD/focused-test reminders, and local-state safety cautions.
 
+- [x] Split `README.md` into English/Korean README files following the `bitbucket-cli` bilingual structure.
+- [x] Added GitHub release automation and Homebrew tap template support for `skillctl`.
+
 ## Pending Observable Work
 
 - [x] Create Rust workspace under `rust/` with `skillctl-core` and `skillctl-cli`.
@@ -207,3 +210,37 @@ updated: 2026-07-05
   - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
   - `cargo test --manifest-path rust/Cargo.toml --all` passed: 40 tests across 4 suites.
   - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help` printed root help with `plan`, `apply`, `doctor`, `list`, `prune`, `version`, and `unlink`, plus Quick start guidance.
+- 2026-07-05: `setup-file-based-context` common skill migration verification passed:
+  - Created canonical package at `/Users/azyu/.skillctl/skills/setup-file-based-context/SKILL.md` with common agent-instruction wording for `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and project-specific instruction files.
+  - Added `setup-file-based-context` to `/Users/azyu/.skillctl/config.yaml` with `expose: [claude, codex]`.
+  - Backed up the unmanaged Claude target to `/Users/azyu/.skillctl/adoption-backups/20260705-153209/setup-file-based-context`.
+  - Pre-apply `/Users/azyu/.local/bin/skillctl plan` reported only `CREATE claude/setup-file-based-context` and `CREATE codex/setup-file-based-context`.
+  - `/Users/azyu/.local/bin/skillctl apply` created the Claude and Codex target symlinks; post-apply `/Users/azyu/.local/bin/skillctl plan` printed `No changes.`
+  - Verified Claude and Codex target symlinks point to `/Users/azyu/.skillctl/rendered/<target>/setup-file-based-context`, both rendered `SKILL.md` files contain the common third-person description, and both target lockfiles include `setup-file-based-context`.
+- 2026-07-05: Selected home skill migration verification passed:
+  - Canonicalized `godot-wiki`, `kb-wiki`, `oracle-research`, and `obsidian-cli` under `/Users/azyu/.skillctl/skills/`.
+  - Added only `oracle-research` and `obsidian-cli` to `/Users/azyu/.skillctl/config.yaml` with `expose: [claude, codex]`; intentionally left `godot-wiki` and `kb-wiki` out of config as canonical-only skills.
+  - Backed up the original unmanaged target directories to `/Users/azyu/.skillctl/adoption-backups/20260705-155732/{godot-wiki,kb-wiki,oracle-research,obsidian-cli}`.
+  - Pre-apply `/Users/azyu/.local/bin/skillctl plan` reported only four creates: Claude/Codex `obsidian-cli` and Claude/Codex `oracle-research`.
+  - `/Users/azyu/.local/bin/skillctl apply` created Claude/Codex symlinks for `obsidian-cli` and `oracle-research`; post-apply `/Users/azyu/.local/bin/skillctl plan` printed `No changes.`
+  - Verified Claude/Codex `obsidian-cli` and `oracle-research` target paths are symlinks to `/Users/azyu/.skillctl/rendered/<target>/<skill>`, target `SKILL.md` files render, and both Claude/Codex lockfiles include those two skills.
+  - Verified `godot-wiki` and `kb-wiki` have canonical `SKILL.md` files but are not materialized in Codex because they are intentionally absent from config.
+- 2026-07-05: Bilingual README verification passed:
+  - Read `/Volumes/EXTSSD/code/personal/bitbucket-cli/README.md` and `/Volumes/EXTSSD/code/personal/bitbucket-cli/README.ko-kr.MD` for the language-link and translated README structure.
+  - Updated `README.md` as the English README with a language switcher and actual `skillctl` install, quick start, command, config, safety, and development guidance.
+  - Created `README.ko-kr.MD` as the Korean README with matching sections and no unsupported install channels or commands.
+- 2026-07-05: Release workflow and Homebrew tap setup verification passed:
+  - Added `.github/workflows/release-build.yml` with tag/manual release triggers, five platform build matrix entries, GitHub Release publishing, and `HOMEBREW_TAP_TOKEN`-gated `azyu/homebrew-tap` formula updates.
+  - Added repository `Makefile` targets for `build`, `install`, `test`, `fmt`, `lint`, `clean`, and `help`.
+  - Added `/Volumes/EXTSSD/code/personal/homebrew-tap/skillctl.rb.template` using release archive URLs for macOS arm64, Linux amd64, and Linux arm64.
+  - Updated English/Korean README install sections with Homebrew instructions guarded by the tagged-release/tap-publication prerequisite.
+  - `actionlint .github/workflows/release-build.yml` passed.
+  - YAML parse check confirmed workflow jobs `build`, `release`, and `homebrew-tap`, five build matrix entries, and `HOMEBREW_TAP_TOKEN` wiring.
+  - `ruby -c /Volumes/EXTSSD/code/personal/homebrew-tap/skillctl.rb.template` printed `Syntax OK`.
+  - `make help` printed all expected repository helper targets.
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed: 40 tests across 4 suites.
+- 2026-07-05: Homebrew tap token rotation verification passed:
+  - Read-only inventory checked 62 `azyu` repositories and found existing `HOMEBREW_TAP_TOKEN` secrets in `azyu/kis-cli`, `azyu/tossinvest-cli`, and `azyu/bb-cli`.
+  - Rotated `HOMEBREW_TAP_TOKEN` in `azyu/kis-cli`, `azyu/tossinvest-cli`, and `azyu/bb-cli`, and added it to `azyu/skillctl`.
+  - `gh secret list` reported `HOMEBREW_TAP_TOKEN` updated at `2026-07-05T07:48:31Z` for all four repositories.

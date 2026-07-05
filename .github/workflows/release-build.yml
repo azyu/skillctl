@@ -1,0 +1,270 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (vMAJOR.MINOR.PATCH), e.g. v0.1.0"
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-amd64
+            runs_on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform_id: linux_amd64
+            artifact_name: skillctl_linux_amd64
+            binary_name: skillctl
+          - label: linux-arm64
+            runs_on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform_id: linux_arm64
+            artifact_name: skillctl_linux_arm64
+            binary_name: skillctl
+          - label: macos-arm64
+            runs_on: macos-14
+            target: aarch64-apple-darwin
+            platform_id: macos_arm64
+            artifact_name: skillctl_macos_arm64
+            binary_name: skillctl
+          - label: windows-x64
+            runs_on: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform_id: windows_x64
+            artifact_name: skillctl_windows_x64
+            binary_name: skillctl.exe
+          - label: windows-arm64
+            runs_on: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform_id: windows_arm64
+            artifact_name: skillctl_windows_arm64
+            binary_name: skillctl.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Validate release tag format
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ env.RELEASE_TAG }}"
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: ${TAG}"
+            echo "Expected format: vMAJOR.MINOR.PATCH (example: v0.1.0)"
+            exit 1
+          fi
+
+      - name: Validate Cargo version matches release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.RELEASE_TAG }}"
+          VERSION="${VERSION#v}"
+          CARGO_VERSION=$(grep -m1 '^version = ' rust/Cargo.toml | cut -d '"' -f2)
+          if [[ "${CARGO_VERSION}" != "${VERSION}" ]]; then
+            echo "Cargo workspace version ${CARGO_VERSION} does not match release tag ${VERSION}."
+            exit 1
+          fi
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release --target "${{ matrix.target }}"
+
+      - name: Smoke binary (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "rust/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" --version
+
+      - name: Smoke binary (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "rust/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" --version
+
+      - name: Package archive (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.RELEASE_TAG }}"
+          VERSION="${VERSION#v}"
+          ARCHIVE_NAME="skillctl_${VERSION}_${{ matrix.platform_id }}"
+
+          mkdir staging
+          cp "rust/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" staging/
+          cp README.md staging/
+          cp README.ko-kr.MD staging/
+          cp LICENSE staging/
+          tar -czf "${ARCHIVE_NAME}.tar.gz" -C staging "${{ matrix.binary_name }}" README.md README.ko-kr.MD LICENSE
+
+      - name: Package archive (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Version = "${{ env.RELEASE_TAG }}" -replace '^v', ''
+          $ArchiveName = "skillctl_${Version}_${{ matrix.platform_id }}"
+
+          New-Item -ItemType Directory -Path staging | Out-Null
+          Copy-Item "rust/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "staging/${{ matrix.binary_name }}"
+          Copy-Item README.md staging/
+          Copy-Item README.ko-kr.MD staging/
+          Copy-Item LICENSE staging/
+          Compress-Archive -Path staging/* -DestinationPath "${ArchiveName}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: skillctl_*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          tmp="$(mktemp)"
+          find . -maxdepth 1 -type f ! -name checksums.txt -print0 | \
+            xargs -0 sha256sum | \
+            sed 's# \./# #g' | \
+            sort -k2 > "${tmp}"
+          mv "${tmp}" checksums.txt
+
+      - name: Create, update, and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.RELEASE_TAG }}"
+
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "${TAG}" dist/* --title "${TAG}" --generate-notes --repo "${GITHUB_REPOSITORY}"
+          fi
+
+          gh release edit "${TAG}" --draft=false --prerelease=false --repo "${GITHUB_REPOSITORY}"
+
+  homebrew-tap:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+    steps:
+      - name: Skip when Homebrew tap token is not configured
+        if: ${{ env.HOMEBREW_TAP_TOKEN == '' }}
+        shell: bash
+        run: echo "HOMEBREW_TAP_TOKEN is not configured; skipping Homebrew tap update."
+
+      - name: Checkout homebrew-tap
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: azyu/homebrew-tap
+          token: ${{ env.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Render formula from release assets
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+
+          gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" --json assets > release.json
+
+          ruby <<'RUBY'
+          require "json"
+
+          version = ENV.fetch("VERSION").sub(/\Av/, "")
+          release = JSON.parse(File.read("release.json"))
+          assets = release.fetch("assets").each_with_object({}) do |asset, index|
+            index[asset.fetch("name")] = asset.fetch("digest").sub(/\Asha256:/, "")
+          end
+
+          replacements = {
+            "{{VERSION}}" => version,
+            "{{MACOS_ARM64_SHA256}}" => assets.fetch("skillctl_#{version}_macos_arm64.tar.gz"),
+            "{{LINUX_AMD64_SHA256}}" => assets.fetch("skillctl_#{version}_linux_amd64.tar.gz"),
+            "{{LINUX_ARM64_SHA256}}" => assets.fetch("skillctl_#{version}_linux_arm64.tar.gz"),
+          }
+
+          formula = File.read("homebrew-tap/skillctl.rb.template")
+          replacements.each do |placeholder, value|
+            formula = formula.gsub(placeholder, value)
+          end
+          File.write("homebrew-tap/skillctl.rb", formula)
+          RUBY
+
+      - name: Commit and push formula update
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        shell: bash
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- skillctl.rb; then
+            echo "No Homebrew formula changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add skillctl.rb
+          git commit -m "feat: update skillctl to ${VERSION#v}"
+          git push origin HEAD:main

@@ -17,6 +17,9 @@ The current release binary has been built and copied to `~/.local/bin/skillctl`.
 
 Durable implementation plan: `docs/superpowers/plans/2026-07-05-skillctl.md`.
 
+Release automation is staged through `.github/workflows/release-build.yml`: tagged `vMAJOR.MINOR.PATCH` releases build platform archives, publish GitHub Release assets, and update `azyu/homebrew-tap` when `HOMEBREW_TAP_TOKEN` is configured.
+
+
 ## Implemented Capabilities
 
 - Uses `~/.skillctl/` as the tool-owned source and state root.

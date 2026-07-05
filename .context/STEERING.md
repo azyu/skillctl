@@ -45,3 +45,4 @@ Follow the implementation plan at `docs/superpowers/plans/2026-07-05-skillctl.md
 | 2026-07-05 | Keep target directories separate from source. | Prevents active runtime discovery paths from also being the canonical source tree. |
 | 2026-07-05 | Use rendered packages between source and targets. | Runtime variants can share references/scripts while targets see complete skill directories. |
 | 2026-07-05 | Start with YAML only. | Skill metadata already uses YAML frontmatter; dual YAML/TOML support is unnecessary v1 complexity. |
+| 2026-07-05 | Publish release archives through GitHub Actions and update `azyu/homebrew-tap` with `HOMEBREW_TAP_TOKEN`. | Homebrew install support should be backed by release assets and SHA256-backed formula updates rather than README-only claims. |
