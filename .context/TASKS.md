@@ -9,7 +9,7 @@ updated: 2026-07-05
 | Phase | Status | Evidence |
 |---|---|---|
 | Planning and context bootstrap | Complete | `.context/PROJECT.md`, `.context/STEERING.md`, `.context/TASKS.md`, `AGENTS.md`, and `docs/superpowers/plans/2026-07-05-skillctl.md` were written. |
-| Rust implementation | In progress | Initial Rust workspace and command orchestration completed; release binary copied to `~/.local/bin/skillctl`; full lock-backed `apply`, `prune`, and `unlink` hardening remains pending. `cargo test --manifest-path rust/Cargo.toml --all` passed 12 tests on 2026-07-05. |
+| Rust implementation | Complete | Lock-backed `plan`, `apply`, `prune`, `unlink`, and `doctor` hardening completed; non-zero `plan` exit-code policy implemented and verified; release binary copied to `~/.local/bin/skillctl`. `cargo test --manifest-path rust/Cargo.toml --all` passed 36 tests on 2026-07-05. |
 
 ## Completed Work
 
@@ -29,6 +29,13 @@ updated: 2026-07-05
 - [x] Implemented doctor diagnostics and expanded CLI smoke coverage.
 - [x] Wired initial `plan`, `doctor`, `list`, `apply`, `prune`, and `unlink` command outputs through core orchestration.
 - [x] Built release binary and copied it to `~/.local/bin/skillctl`.
+- [x] Added config validation for version, expose targets, v1 policy values, and escaping skill paths.
+- [x] Added deterministic source/rendered digests and stored real source digests in lockfile entries.
+- [x] Hardened lock-backed `plan`, `apply`, `prune`, `unlink`, and `doctor` behavior against unmanaged conflicts and managed-path drift.
+- [x] Added CLI E2E coverage for apply, prune, unlink, doctor, plan conflict reporting, and list output.
+- [x] Rebuilt release binary and copied the updated `skillctl` to `~/.local/bin/skillctl`.
+- [x] Created `README.md` using the project state and the `tossinvest-cli` / `bitbucket-cli` README structure as references.
+- [x] Updated `AGENTS.md` with current project structure, document roles, context update rules, verification guidance, TDD/focused-test reminders, and local-state safety cautions.
 
 ## Pending Observable Work
 
@@ -42,57 +49,59 @@ updated: 2026-07-05
 - [x] Implement initial `doctor`, `list`, `prune`, and `unlink` command surfaces.
 - [x] Add CLI smoke tests and core behavior tests.
 - [x] Run focused verification commands and record observed results here.
-- [ ] Update `.context/PROJECT.md` to reflect implemented Rust workspace and remaining blockers.
-- [ ] Replace stale doctor hint that mentions nonexistent `skillctl init`.
-- [ ] Add config validation for `version == 1`.
-- [ ] Add config validation for unknown `skills.*.expose` targets.
-- [ ] Add config validation for allowed policy values.
-- [ ] Add config validation preventing skill paths from escaping `~/.skillctl/`.
-- [ ] Define and test rendered package inclusion rules.
-- [ ] Implement deterministic source/rendered tree digest calculation.
-- [ ] Store real `source_digest` values in lockfile entries.
-- [ ] Compare lockfile digests when planning managed updates.
-- [ ] Add ownership check for managed target symlinks before replacement.
-- [ ] Add ownership check for stale managed target removal.
-- [ ] Extend `PlanOperation::RemoveStale` with expected rendered path ownership data.
-- [ ] Extend `PlanOperation::Link` or planning context with previous managed ownership data.
-- [ ] Refactor shared target planning context for `plan`, `apply`, `prune`, and `unlink`.
-- [ ] Wire `run_plan` through lockfile loading and `build_plan`.
-- [ ] Make `run_plan` report unmanaged conflicts from target directories.
-- [ ] Make `run_plan` report stale managed entries.
-- [ ] Make `run_plan` distinguish `CREATE`, `UPDATE`, `REMOVE_STALE`, and `ERROR`.
-- [ ] Decide and implement non-zero `plan` exit code when plan errors exist.
-- [ ] Wire `run_apply` to resolve skills, render packages, build plans, and apply operations.
-- [ ] Make `run_apply` abort before mutation when plan errors exist.
-- [ ] Make `run_apply` write updated per-target `.skillctl.lock.json` files.
-- [ ] Make `run_apply` summarize applied operations.
-- [ ] Implement lock-backed `run_prune`.
-- [ ] Make `run_prune` remove only lockfile-managed stale symlinks.
-- [ ] Make `run_prune` refuse drifted or unmanaged paths.
-- [ ] Make `run_prune` update lockfiles after removals.
-- [ ] Implement lock-backed `run_unlink`.
-- [ ] Make `run_unlink` support optional `--target` filtering.
-- [ ] Make `run_unlink` remove only matching lockfile-managed symlinks.
-- [ ] Make `run_unlink` update lockfiles after removals.
-- [ ] Extend `doctor` to read and validate target lockfiles.
-- [ ] Extend `doctor` to report foreign lockfile owners.
-- [ ] Extend `doctor` to report missing managed target paths.
-- [ ] Extend `doctor` to report non-symlink managed target paths.
-- [ ] Extend `doctor` to report managed symlink target mismatches.
-- [ ] Extend `doctor` to report missing rendered paths.
-- [ ] Extend `doctor` to report unmanaged target conflicts.
-- [ ] Add CLI E2E test: `apply` creates rendered directory, target symlink, and lockfile entry.
-- [ ] Add CLI E2E test: `apply` aborts before mutation on unmanaged conflict.
-- [ ] Add CLI E2E test: `apply` refuses drifted managed target paths.
-- [ ] Add CLI E2E test: `prune` removes only lockfile-managed stale symlink.
-- [ ] Add CLI E2E test: `prune` refuses unmanaged regular files.
-- [ ] Add CLI E2E test: `unlink <skill> --target <target>` removes only one managed entry.
-- [ ] Add CLI E2E test: `doctor` reports lockfile owner mismatch.
-- [ ] Add CLI E2E test: `doctor` reports broken or drifted managed symlink.
-- [ ] Add CLI E2E test: `plan` reports unmanaged conflict.
-- [ ] Add CLI E2E test: `list` covers empty and configured skills.
-- [ ] Run full release verification after mutation hardening.
-- [ ] Rebuild release binary and copy updated `skillctl` to `~/.local/bin/skillctl`.
+- [x] Update `.context/PROJECT.md` to reflect implemented Rust workspace and remaining blockers.
+- [x] Replace stale doctor hint that mentions nonexistent `skillctl init`.
+- [x] Add config validation for `version == 1`.
+- [x] Add config validation for unknown `skills.*.expose` targets.
+- [x] Add config validation for allowed policy values.
+- [x] Add config validation preventing skill paths from escaping `~/.skillctl/`.
+- [x] Define and test rendered package inclusion rules.
+- [x] Implement deterministic source/rendered tree digest calculation.
+- [x] Store real `source_digest` values in lockfile entries.
+- [x] Compare lockfile digests when planning managed updates.
+- [x] Add ownership check for managed target symlinks before replacement.
+- [x] Add ownership check for stale managed target removal.
+- [x] Extend `PlanOperation::RemoveStale` with expected rendered path ownership data.
+- [x] Extend `PlanOperation::Link` or planning context with previous managed ownership data.
+- [x] Refactor shared target planning context for `plan`, `apply`, `prune`, and `unlink`.
+- [x] Wire `run_plan` through lockfile loading and `build_plan`.
+- [x] Make `run_plan` report unmanaged conflicts from target directories.
+- [x] Make `run_plan` report stale managed entries.
+- [x] Make `run_plan` distinguish `CREATE`, `UPDATE`, `REMOVE_STALE`, and `ERROR`.
+- [x] Decide and implement non-zero `plan` exit code when plan errors exist.
+- [x] Wire `run_apply` to resolve skills, render packages, build plans, and apply operations.
+- [x] Make `run_apply` abort before mutation when plan errors exist.
+- [x] Make `run_apply` write updated per-target `.skillctl.lock.json` files.
+- [x] Make `run_apply` summarize applied operations.
+- [x] Implement lock-backed `run_prune`.
+- [x] Make `run_prune` remove only lockfile-managed stale symlinks.
+- [x] Make `run_prune` refuse drifted or unmanaged paths.
+- [x] Make `run_prune` update lockfiles after removals.
+- [x] Implement lock-backed `run_unlink`.
+- [x] Make `run_unlink` support optional `--target` filtering.
+- [x] Make `run_unlink` remove only matching lockfile-managed symlinks.
+- [x] Make `run_unlink` update lockfiles after removals.
+- [x] Extend `doctor` to read and validate target lockfiles.
+- [x] Extend `doctor` to report foreign lockfile owners.
+- [x] Extend `doctor` to report missing managed target paths.
+- [x] Extend `doctor` to report non-symlink managed target paths.
+- [x] Extend `doctor` to report managed symlink target mismatches.
+- [x] Extend `doctor` to report missing rendered paths.
+- [x] Extend `doctor` to report unmanaged target conflicts.
+- [x] Add CLI E2E test: `apply` creates rendered directory, target symlink, and lockfile entry.
+- [x] Add CLI E2E test: `apply` aborts before mutation on unmanaged conflict.
+- [x] Add CLI E2E test: `apply` refuses drifted managed target paths.
+- [x] Add CLI E2E test: `prune` removes only lockfile-managed stale symlink.
+- [x] Add CLI E2E test: `prune` refuses unmanaged regular files.
+- [x] Add CLI E2E test: `unlink <skill> --target <target>` removes only one managed entry.
+- [x] Add CLI E2E test: `doctor` reports lockfile owner mismatch.
+- [x] Add CLI E2E test: `doctor` reports broken or drifted managed symlink.
+- [x] Add CLI E2E test: `plan` reports unmanaged conflict.
+- [x] Add CLI E2E test: `list` covers empty and configured skills.
+- [x] Run full release verification after mutation hardening.
+- [x] Rebuild release binary and copy updated `skillctl` to `~/.local/bin/skillctl`.
+- [x] Create `README.md` with actual install, config, command, safety, and development guidance.
+- [x] Update `AGENTS.md` with applicable guidance from the `tossinvest-cli` and `bitbucket-cli` reference AGENTS files.
 
 ## Verification Results
 
@@ -142,3 +151,34 @@ updated: 2026-07-05
   - `~/.local/bin/skillctl --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
   - `cargo test --manifest-path rust/Cargo.toml --all` passed (12 tests across 4 suites).
   - `git status --short` was clean before recording this context update.
+- 2026-07-05: Mutation hardening and plan exit-code policy verification passed:
+  - RED: `cargo test --manifest-path rust/Cargo.toml -p skillctl-core config::tests` failed 4 new validation tests before implementation.
+  - GREEN: `cargo test --manifest-path rust/Cargo.toml -p skillctl-core config::tests` passed (5 tests).
+  - `cargo test --manifest-path rust/Cargo.toml -p skillctl-core render::tests` passed (4 tests).
+  - `cargo test --manifest-path rust/Cargo.toml -p skillctl-core plan::tests` passed (5 tests).
+  - `cargo test --manifest-path rust/Cargo.toml -p skillctl-core` passed (22 tests).
+  - `cargo test --manifest-path rust/Cargo.toml -p skillctl-cli --test smoke` passed (14 tests).
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed (36 tests across 4 suites).
+  - `cargo run --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl -- --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+  - `cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release` succeeded.
+  - Copied `rust/target/release/skillctl` to `~/.local/bin/skillctl`.
+  - `~/.local/bin/skillctl --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+- 2026-07-05: Non-zero `plan` exit policy verification passed:
+  - RED: `cargo test --manifest-path rust/Cargo.toml -p skillctl-cli --test smoke plan_exits_nonzero_when_plan_errors_exist` failed because `plan` exited `0` while printing an unmanaged conflict `ERROR`.
+  - GREEN: `cargo test --manifest-path rust/Cargo.toml -p skillctl-cli --test smoke plan_exits_nonzero_when_plan_errors_exist` passed (1 test).
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed after formatting.
+  - `cargo test --manifest-path rust/Cargo.toml --all` passed (36 tests across 4 suites).
+  - `cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release` succeeded.
+  - Copied `rust/target/release/skillctl` to `~/.local/bin/skillctl`.
+  - `/Users/azyu/.local/bin/skillctl --help` printed `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+  - Installed binary conflict smoke test passed: with a temporary `HOME` containing an unmanaged target conflict, `/Users/azyu/.local/bin/skillctl plan` exited `1` and printed `ERROR ... unmanaged conflict`.
+- 2026-07-05: README creation verification passed:
+  - Read `/Volumes/EXTSSD/code/personal/tossinvest-cli/README.md` and `/Volumes/EXTSSD/code/personal/bitbucket-cli/README.md` for structure.
+  - Created `README.md` for `skillctl` without adding unsupported install channels, remote features, marketplaces, or commands outside `plan`, `apply`, `doctor`, `list`, `prune`, and `unlink`.
+  - Read back `README.md` and confirmed it documents actual config, render, lockfile, plan exit-code, safety, and verification behavior.
+- 2026-07-05: AGENTS.md update verification passed:
+  - Read current `.context/PROJECT.md`, `.context/STEERING.md`, and `.context/TASKS.md` before editing.
+  - Read `/Volumes/EXTSSD/code/personal/tossinvest-cli/AGENTS.md` and `/Volumes/EXTSSD/code/personal/bitbucket-cli/AGENTS.md` for reusable workflow guidance.
+  - Updated `AGENTS.md` to remove stale “planned Rust CLI” wording and add current structure, document roles, update rules, focused verification/TDD guidance, and secrets/local-state cautions.
+  - Read back `AGENTS.md` and confirmed it avoids Bitbucket/Toss domain rules and unsupported `skillctl` commands.
