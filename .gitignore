@@ -1,0 +1,5 @@
+# Rust build output
+rust/target/
+
+# OS metadata
+.DS_Store
