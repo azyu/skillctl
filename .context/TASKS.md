@@ -273,3 +273,6 @@ updated: 2026-07-05
   - `actionlint .github/workflows/ci.yml .github/workflows/release-build.yml` passed.
   - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
   - `cargo test --manifest-path rust/Cargo.toml --all` passed: 40 tests across 4 suites.
+- 2026-07-05: Pushed README badge update and verified CI:
+  - Commit `f92685b docs: add readme badges` was pushed to `origin/main`.
+  - GitHub Actions CI run `28736739680` completed successfully; Rust job passed formatting and test steps.
