@@ -2,7 +2,7 @@ use crate::error::{Result, SkillctlError};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct Config {
@@ -73,6 +73,7 @@ impl Config {
         for target in config.targets.values_mut() {
             target.path = expand_home(&target.path, home);
         }
+        config.validate(&home.join(".skillctl"))?;
         Ok(config)
     }
 
@@ -101,6 +102,81 @@ impl Config {
             skills: BTreeMap::new(),
         }
     }
+    fn validate(&self, root: &Path) -> Result<()> {
+        if self.version != 1 {
+            return Err(SkillctlError::Config(format!(
+                "config version must be 1, found {}",
+                self.version
+            )));
+        }
+        validate_policy(
+            "unmanaged_conflict",
+            &self.policies.unmanaged_conflict,
+            "error",
+        )?;
+        validate_policy(
+            "stale_managed_link",
+            &self.policies.stale_managed_link,
+            "remove",
+        )?;
+        validate_policy(
+            "missing_variant",
+            &self.policies.missing_variant,
+            "fallback_common",
+        )?;
+        validate_policy("duplicate_name", &self.policies.duplicate_name, "error")?;
+        validate_policy("name_mismatch", &self.policies.name_mismatch, "error")?;
+
+        for (skill_id, skill) in &self.skills {
+            for target in &skill.expose {
+                if !self.targets.contains_key(target) {
+                    return Err(SkillctlError::Config(format!(
+                        "skill {skill_id} exposes unknown expose target {target}"
+                    )));
+                }
+            }
+
+            let resolved = if skill.path.is_absolute() {
+                normalize_lexical(&skill.path)
+            } else {
+                normalize_lexical(&root.join(&skill.path))
+            };
+            let normalized_root = normalize_lexical(root);
+            if !resolved.starts_with(&normalized_root) {
+                return Err(SkillctlError::Config(format!(
+                    "skill {skill_id} path {} escapes {}",
+                    skill.path.display(),
+                    normalized_root.display()
+                )));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn validate_policy(name: &str, actual: &str, expected: &str) -> Result<()> {
+    if actual == expected {
+        return Ok(());
+    }
+    Err(SkillctlError::Config(format!(
+        "policy {name} must be {expected}, found {actual}"
+    )))
+}
+
+fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn expand_home(path: &Path, home: &Path) -> PathBuf {
@@ -185,5 +261,99 @@ skills:
         assert_eq!(config.targets["claude"].path, home.join(".claude/skills"));
         assert_eq!(config.targets["codex"].path, home.join(".agents/skills"));
         assert_eq!(config.skills["sample"].path, PathBuf::from("skills/sample"));
+    }
+
+    #[test]
+    fn rejects_unsupported_config_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = write_config(
+            home,
+            r#"
+version: 2
+targets:
+  claude:
+    path: ~/.claude/skills
+skills: {}
+"#,
+        );
+
+        let error = Config::load_from(&config_path, home).unwrap_err();
+        assert!(error.to_string().contains("version must be 1"));
+    }
+
+    #[test]
+    fn rejects_expose_targets_not_declared_in_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = write_config(
+            home,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+skills:
+  sample:
+    path: skills/sample
+    expose: [codex]
+"#,
+        );
+
+        let error = Config::load_from(&config_path, home).unwrap_err();
+        assert!(error.to_string().contains("unknown expose target"));
+        assert!(error.to_string().contains("codex"));
+    }
+
+    #[test]
+    fn rejects_policy_values_outside_v1_allowlist() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = write_config(
+            home,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+policies:
+  unmanaged_conflict: warn
+skills: {}
+"#,
+        );
+
+        let error = Config::load_from(&config_path, home).unwrap_err();
+        assert!(error.to_string().contains("unmanaged_conflict"));
+        assert!(error.to_string().contains("error"));
+    }
+
+    #[test]
+    fn rejects_skill_paths_that_escape_skillctl_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = write_config(
+            home,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+skills:
+  sample:
+    path: ../outside
+    expose: [claude]
+"#,
+        );
+
+        let error = Config::load_from(&config_path, home).unwrap_err();
+        assert!(error.to_string().contains("escapes"));
+        assert!(error.to_string().contains(".skillctl"));
+    }
+
+    fn write_config(home: &Path, text: &str) -> PathBuf {
+        let config_path = home.join(".skillctl/config.yaml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(&config_path, text).unwrap();
+        config_path
     }
 }
