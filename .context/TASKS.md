@@ -42,7 +42,57 @@ updated: 2026-07-05
 - [x] Implement initial `doctor`, `list`, `prune`, and `unlink` command surfaces.
 - [x] Add CLI smoke tests and core behavior tests.
 - [x] Run focused verification commands and record observed results here.
-- [ ] Fully wire lock-backed `apply`, `prune`, and `unlink` mutations before full release.
+- [ ] Update `.context/PROJECT.md` to reflect implemented Rust workspace and remaining blockers.
+- [ ] Replace stale doctor hint that mentions nonexistent `skillctl init`.
+- [ ] Add config validation for `version == 1`.
+- [ ] Add config validation for unknown `skills.*.expose` targets.
+- [ ] Add config validation for allowed policy values.
+- [ ] Add config validation preventing skill paths from escaping `~/.skillctl/`.
+- [ ] Define and test rendered package inclusion rules.
+- [ ] Implement deterministic source/rendered tree digest calculation.
+- [ ] Store real `source_digest` values in lockfile entries.
+- [ ] Compare lockfile digests when planning managed updates.
+- [ ] Add ownership check for managed target symlinks before replacement.
+- [ ] Add ownership check for stale managed target removal.
+- [ ] Extend `PlanOperation::RemoveStale` with expected rendered path ownership data.
+- [ ] Extend `PlanOperation::Link` or planning context with previous managed ownership data.
+- [ ] Refactor shared target planning context for `plan`, `apply`, `prune`, and `unlink`.
+- [ ] Wire `run_plan` through lockfile loading and `build_plan`.
+- [ ] Make `run_plan` report unmanaged conflicts from target directories.
+- [ ] Make `run_plan` report stale managed entries.
+- [ ] Make `run_plan` distinguish `CREATE`, `UPDATE`, `REMOVE_STALE`, and `ERROR`.
+- [ ] Decide and implement non-zero `plan` exit code when plan errors exist.
+- [ ] Wire `run_apply` to resolve skills, render packages, build plans, and apply operations.
+- [ ] Make `run_apply` abort before mutation when plan errors exist.
+- [ ] Make `run_apply` write updated per-target `.skillctl.lock.json` files.
+- [ ] Make `run_apply` summarize applied operations.
+- [ ] Implement lock-backed `run_prune`.
+- [ ] Make `run_prune` remove only lockfile-managed stale symlinks.
+- [ ] Make `run_prune` refuse drifted or unmanaged paths.
+- [ ] Make `run_prune` update lockfiles after removals.
+- [ ] Implement lock-backed `run_unlink`.
+- [ ] Make `run_unlink` support optional `--target` filtering.
+- [ ] Make `run_unlink` remove only matching lockfile-managed symlinks.
+- [ ] Make `run_unlink` update lockfiles after removals.
+- [ ] Extend `doctor` to read and validate target lockfiles.
+- [ ] Extend `doctor` to report foreign lockfile owners.
+- [ ] Extend `doctor` to report missing managed target paths.
+- [ ] Extend `doctor` to report non-symlink managed target paths.
+- [ ] Extend `doctor` to report managed symlink target mismatches.
+- [ ] Extend `doctor` to report missing rendered paths.
+- [ ] Extend `doctor` to report unmanaged target conflicts.
+- [ ] Add CLI E2E test: `apply` creates rendered directory, target symlink, and lockfile entry.
+- [ ] Add CLI E2E test: `apply` aborts before mutation on unmanaged conflict.
+- [ ] Add CLI E2E test: `apply` refuses drifted managed target paths.
+- [ ] Add CLI E2E test: `prune` removes only lockfile-managed stale symlink.
+- [ ] Add CLI E2E test: `prune` refuses unmanaged regular files.
+- [ ] Add CLI E2E test: `unlink <skill> --target <target>` removes only one managed entry.
+- [ ] Add CLI E2E test: `doctor` reports lockfile owner mismatch.
+- [ ] Add CLI E2E test: `doctor` reports broken or drifted managed symlink.
+- [ ] Add CLI E2E test: `plan` reports unmanaged conflict.
+- [ ] Add CLI E2E test: `list` covers empty and configured skills.
+- [ ] Run full release verification after mutation hardening.
+- [ ] Rebuild release binary and copy updated `skillctl` to `~/.local/bin/skillctl`.
 
 ## Verification Results
 
