@@ -23,22 +23,26 @@
 
 ### Homebrew
 
-tagged release가 Homebrew tap formula를 publish한 뒤에는 다음으로 설치할 수 있습니다:
-
 ```bash
 brew install azyu/tap/skillctl
 ```
 
-release workflow는 repository secret `HOMEBREW_TAP_TOKEN`이 설정되어 있으면 `azyu/homebrew-tap`을 갱신합니다.
+### 미리 빌드된 바이너리
 
+[GitHub Releases](https://github.com/azyu/skillctl/releases/latest)에서 최신 아카이브를 다운로드하세요.
+
+| 플랫폼 | 에셋 |
+|--------|------|
+| Linux amd64 | `skillctl_0.x.y_linux_amd64.tar.gz` |
+| Linux arm64 | `skillctl_0.x.y_linux_arm64.tar.gz` |
+| macOS arm64 | `skillctl_0.x.y_macos_arm64.tar.gz` |
 
 ### 소스에서 빌드
 
 Rust 2024 edition을 지원하는 Rust toolchain이 필요합니다.
 
 ```bash
-cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release
-cp rust/target/release/skillctl ~/.local/bin/skillctl
+make install
 ```
 
 설치된 바이너리를 확인합니다:

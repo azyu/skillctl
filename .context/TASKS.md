@@ -258,3 +258,7 @@ updated: 2026-07-05
   - `ruby -c skillctl.rb` in the tap repo printed `Syntax OK`.
   - `brew update` reported new formula `azyu/tap/skillctl`; `brew fetch --formula azyu/tap/skillctl` succeeded.
   - `brew install azyu/tap/skillctl` installed `/opt/homebrew/Cellar/skillctl/0.1.0`; explicit brewed binary `/opt/homebrew/opt/skillctl/bin/skillctl version` printed `skillctl version 0.1.0+c18253c`.
+- 2026-07-05: README Homebrew install documentation verification passed:
+  - Compared `skillctl` install docs with `/Volumes/EXTSSD/code/personal/bitbucket-cli/README.md` and `README.ko-kr.MD`.
+  - Updated English and Korean README install sections to show direct `brew install azyu/tap/skillctl`, release archive links, Unix release asset names, and `make install` source build flow.
+  - Read back `README.md` and `README.ko-kr.MD` install sections and confirmed they no longer describe Homebrew as pre-publication-only.

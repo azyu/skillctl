@@ -23,22 +23,26 @@
 
 ### Homebrew
 
-After a tagged release has published the Homebrew tap formula:
-
 ```bash
 brew install azyu/tap/skillctl
 ```
 
-The release workflow updates `azyu/homebrew-tap` when the repository secret `HOMEBREW_TAP_TOKEN` is configured.
+### Prebuilt binaries
 
+Download the latest archive from [GitHub Releases](https://github.com/azyu/skillctl/releases/latest).
+
+| Platform | Asset |
+|----------|-------|
+| Linux amd64 | `skillctl_0.x.y_linux_amd64.tar.gz` |
+| Linux arm64 | `skillctl_0.x.y_linux_arm64.tar.gz` |
+| macOS arm64 | `skillctl_0.x.y_macos_arm64.tar.gz` |
 
 ### From source
 
 Requires a Rust toolchain with Rust 2024 edition support.
 
 ```bash
-cargo build --manifest-path rust/Cargo.toml -p skillctl-cli --bin skillctl --release
-cp rust/target/release/skillctl ~/.local/bin/skillctl
+make install
 ```
 
 Verify the installed binary:
