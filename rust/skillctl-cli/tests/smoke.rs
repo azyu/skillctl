@@ -92,6 +92,31 @@ fn apply_creates_rendered_directory_target_symlink_and_lockfile_entry() {
 }
 
 #[test]
+fn pi_apply_renders_variant_exactly_and_creates_symlink_and_lock_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    write_config(home, &["pi"], "sample");
+    write_sample_skill(home);
+    let pi_skill = "---\nname: sample\ndescription: Pi-specific sample\n---\nPi variant body\n";
+    let variant_path = home.join(".skillctl/skills/sample/variants/pi/SKILL.md");
+    std::fs::create_dir_all(variant_path.parent().unwrap()).unwrap();
+    std::fs::write(&variant_path, pi_skill).unwrap();
+
+    skillctl(home).arg("apply").assert().success();
+
+    let rendered = home.join(".skillctl/rendered/pi/sample");
+    let target = home.join(".pi/agent/skills/sample");
+    assert_eq!(
+        std::fs::read_to_string(rendered.join("SKILL.md")).unwrap(),
+        pi_skill
+    );
+    assert_eq!(std::fs::read_link(&target).unwrap(), rendered);
+    let lock = std::fs::read_to_string(home.join(".pi/agent/skills/.skillctl.lock.json")).unwrap();
+    assert!(lock.contains("\"target\": \"pi\""));
+    assert!(lock.contains("\"sample\": {"));
+}
+
+#[test]
 fn apply_aborts_before_mutation_on_unmanaged_conflict() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -207,6 +232,55 @@ fn unlink_target_filter_removes_only_one_managed_entry() {
             .symlink_metadata()
             .is_ok()
     );
+}
+
+#[test]
+fn unlink_target_pi_after_apply_leaves_claude_link_and_lock_entry_intact() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    write_config(home, &["claude", "pi"], "sample");
+    write_sample_skill(home);
+
+    skillctl(home).arg("apply").assert().success();
+    skillctl(home)
+        .args(["unlink", "sample", "--target", "pi"])
+        .assert()
+        .success();
+
+    assert!(
+        home.join(".pi/agent/skills/sample")
+            .symlink_metadata()
+            .is_err()
+    );
+    assert!(
+        home.join(".claude/skills/sample")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    let pi_lock =
+        std::fs::read_to_string(home.join(".pi/agent/skills/.skillctl.lock.json")).unwrap();
+    let claude_lock =
+        std::fs::read_to_string(home.join(".claude/skills/.skillctl.lock.json")).unwrap();
+    assert!(!pi_lock.contains("\"sample\": {"));
+    assert!(claude_lock.contains("\"sample\": {"));
+}
+
+#[test]
+fn default_doctor_reports_missing_pi_target_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    std::fs::create_dir_all(home.join(".skillctl/skills")).unwrap();
+    std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+    std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+
+    skillctl(home)
+        .arg("doctor")
+        .assert()
+        .failure()
+        .stdout(predicates::str::contains("pi: missing target root"))
+        .stdout(predicates::str::contains(".pi/agent/skills"));
 }
 
 #[test]
@@ -746,6 +820,7 @@ fn target_root(home: &Path, target: &str) -> PathBuf {
     match target {
         "claude" => home.join(".claude/skills"),
         "codex" => home.join(".agents/skills"),
+        "pi" => home.join(".pi/agent/skills"),
         other => home.join(format!(".{other}/skills")),
     }
 }
@@ -754,6 +829,7 @@ fn target_path_yaml(target: &str) -> &'static str {
     match target {
         "claude" => "~/.claude/skills",
         "codex" => "~/.agents/skills",
+        "pi" => "~/.pi/agent/skills",
         _ => "~/.other/skills",
     }
 }

@@ -144,6 +144,14 @@ impl Config {
                 enabled: true,
             },
         );
+        targets.insert(
+            "pi".to_string(),
+            TargetConfig {
+                path: home.join(".pi/agent/skills"),
+                method: MaterializeMethod::Symlink,
+                enabled: true,
+            },
+        );
         Self {
             version: 1,
             targets,
@@ -294,6 +302,40 @@ fn default_name_mismatch() -> String {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn default_config_includes_enabled_symlink_targets_for_claude_codex_and_pi() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+
+        let config = Config::default_for_home(home);
+
+        assert_eq!(config.targets.len(), 3);
+        assert_eq!(
+            config.targets["claude"],
+            TargetConfig {
+                path: home.join(".claude/skills"),
+                method: MaterializeMethod::Symlink,
+                enabled: true,
+            }
+        );
+        assert_eq!(
+            config.targets["codex"],
+            TargetConfig {
+                path: home.join(".agents/skills"),
+                method: MaterializeMethod::Symlink,
+                enabled: true,
+            }
+        );
+        assert_eq!(
+            config.targets["pi"],
+            TargetConfig {
+                path: home.join(".pi/agent/skills"),
+                method: MaterializeMethod::Symlink,
+                enabled: true,
+            }
+        );
+    }
 
     #[test]
     fn parses_canonical_root_and_targets() {
