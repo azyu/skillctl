@@ -7,10 +7,12 @@ pub mod model;
 pub mod plan;
 pub mod render;
 pub mod resolve;
+pub mod sources;
 
 use crate::lockfile::{ManagedEntry, TargetLock};
 use crate::plan::{DesiredLink, Plan, PlanOperation};
 use crate::resolve::ResolvedSkill;
+use crate::sources::SourceLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -28,11 +30,11 @@ pub fn run(request: Request) -> Result<CommandOutput> {
     } else {
         config::Config::default_for_home(&home)
     };
-
     match request {
         Request::Plan => run_plan(&root, &config),
         Request::Apply => run_apply(&root, &config),
         Request::Doctor => run_doctor(&root, &config),
+        Request::Update => run_update(&root, &config),
         Request::List => run_list(&config),
         Request::Prune => run_prune(&root, &config),
         Request::Unlink { skill, target } => run_unlink(&root, &config, &skill, target.as_deref()),
@@ -110,17 +112,39 @@ fn run_apply(root: &Path, config: &config::Config) -> Result<CommandOutput> {
 }
 
 fn run_doctor(root: &Path, config: &config::Config) -> Result<CommandOutput> {
+    let source_root_required = config.skills.values().any(|skill| skill.source.is_none());
     let inputs: Vec<_> = config
         .targets
         .iter()
         .map(|(name, target)| doctor::TargetHealthInput {
             target: name.clone(),
             source_root: root.join("skills"),
+            source_root_required,
             target_root: target.path.clone(),
             lock_path: target.path.join(".skillctl.lock.json"),
         })
         .collect();
-    let report = doctor::check(&inputs);
+    let mut report = doctor::check(&inputs);
+    let source_lock = sources::read_source_lock_or_empty(&root.join("source-lock.json"))?;
+    doctor::check_sources(root, config, &source_lock, &mut report.diagnostics);
+    for input in &inputs {
+        let Ok(lock) = TargetLock::read_or_empty(
+            &input.lock_path,
+            &input.target,
+            &input.source_root,
+            &input.target_root,
+        ) else {
+            continue;
+        };
+        doctor::check_target_provenance(
+            &input.target,
+            &input.lock_path,
+            &lock,
+            config,
+            &source_lock,
+            &mut report.diagnostics,
+        );
+    }
     Ok(CommandOutput {
         stdout: report.render(),
         stderr: String::new(),
@@ -138,6 +162,53 @@ fn run_list(config: &config::Config) -> Result<CommandOutput> {
         output.push_str("No skills configured.\n");
     }
     Ok(CommandOutput::success(output))
+}
+
+fn run_update(root: &Path, config: &config::Config) -> Result<CommandOutput> {
+    let report = sources::update_sources(root, config)?;
+    let has_errors = report.has_errors();
+    let mut output = String::from("SOURCE\tREF\tOLD\tNEW\tSTATUS\n");
+    for update in report.updates {
+        let old = update
+            .old_commit
+            .as_deref()
+            .map(short_commit)
+            .unwrap_or("-");
+        let new = if update.new_commit.is_empty() {
+            "-"
+        } else {
+            short_commit(&update.new_commit)
+        };
+        output.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\n",
+            update.source_id,
+            update.ref_name,
+            old,
+            new,
+            format_source_update_status(&update.status)
+        ));
+    }
+    if output == "SOURCE\tREF\tOLD\tNEW\tSTATUS\n" {
+        output.push_str("No sources configured.\n");
+    }
+    Ok(CommandOutput {
+        stdout: output,
+        stderr: String::new(),
+        exit_code: if has_errors { 1 } else { 0 },
+    })
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..7).unwrap_or(commit)
+}
+
+fn format_source_update_status(status: &sources::SourceUpdateStatus) -> String {
+    match status {
+        sources::SourceUpdateStatus::Cloned => "CLONED".to_string(),
+        sources::SourceUpdateStatus::Updated => "UPDATED".to_string(),
+        sources::SourceUpdateStatus::Unchanged => "UNCHANGED".to_string(),
+        sources::SourceUpdateStatus::Error { message } => format!("ERROR: {message}"),
+    }
 }
 
 fn run_prune(root: &Path, config: &config::Config) -> Result<CommandOutput> {
@@ -291,11 +362,13 @@ fn build_target_plans(
     unmanaged_policy: UnmanagedPolicy,
 ) -> Result<Vec<TargetPlan>> {
     let mut plans = Vec::new();
+    let source_lock = sources::read_source_lock_or_empty(&root.join("source-lock.json"))?;
     for (target_name, target) in selected_targets(config, selection) {
         let lock_path = target.path.join(".skillctl.lock.json");
         let lock =
             TargetLock::read_or_empty(&lock_path, target_name, &root.join("skills"), &target.path)?;
-        let (desired, resolved) = desired_for_target(root, config, target_name, &target.path)?;
+        let (desired, resolved) =
+            desired_for_target(root, &source_lock, config, target_name, &target.path)?;
         let plan = match unmanaged_policy {
             UnmanagedPolicy::DesiredOnly => plan::build_plan(&target.path, &lock, desired.clone())?,
             UnmanagedPolicy::RejectUnrelated => {
@@ -350,6 +423,7 @@ fn selected_targets(
 
 fn desired_for_target(
     root: &Path,
+    source_lock: &SourceLock,
     config: &config::Config,
     target_name: &str,
     target_root: &Path,
@@ -360,7 +434,10 @@ fn desired_for_target(
         if !skill.expose.iter().any(|exposed| exposed == target_name) {
             continue;
         }
-        let resolved = resolve::resolve_skill(root, skill_id, &skill.path, target_name)?;
+        let resolved_source =
+            sources::resolve_skill_source(root, source_lock, config, skill_id, skill)?;
+        let resolved =
+            resolve::resolve_skill(root, skill_id, &resolved_source.package_path, target_name)?;
         let source_digest = render::resolved_source_digest(&resolved)?;
         let rendered_path = root
             .join("rendered")
@@ -374,6 +451,7 @@ fn desired_for_target(
             rendered_path,
             source_path: resolved.source_dir.clone(),
             source_digest,
+            source: resolved_source.provenance.clone(),
         });
         resolved_skills.push(resolved);
     }
@@ -399,6 +477,7 @@ fn update_lock_after_plan(lock: &mut TargetLock, desired: &[DesiredLink], plan: 
                             source_path: desired.source_path.clone(),
                             method: "symlink".to_string(),
                             source_digest: desired.source_digest.clone(),
+                            source: desired.source.clone(),
                         },
                     );
                 }
@@ -409,9 +488,9 @@ fn update_lock_after_plan(lock: &mut TargetLock, desired: &[DesiredLink], plan: 
         }
     }
     for desired in desired {
-        lock.managed
-            .entry(desired.target_name.clone())
-            .or_insert_with(|| ManagedEntry {
+        lock.managed.insert(
+            desired.target_name.clone(),
+            ManagedEntry {
                 skill_id: desired.skill_id.clone(),
                 target_name: desired.target_name.clone(),
                 target_path: desired.target_path.clone(),
@@ -419,7 +498,9 @@ fn update_lock_after_plan(lock: &mut TargetLock, desired: &[DesiredLink], plan: 
                 source_path: desired.source_path.clone(),
                 method: "symlink".to_string(),
                 source_digest: desired.source_digest.clone(),
-            });
+                source: desired.source.clone(),
+            },
+        );
     }
 }
 

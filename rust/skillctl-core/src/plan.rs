@@ -1,5 +1,6 @@
 use crate::error::{Result, SkillctlError};
 use crate::lockfile::{ManagedEntry, TargetLock};
+use crate::sources::SourceProvenance;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
@@ -13,6 +14,7 @@ pub struct DesiredLink {
     pub rendered_path: PathBuf,
     pub source_path: PathBuf,
     pub source_digest: String,
+    pub source: Option<SourceProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub enum PlanOperation {
         rendered_path: PathBuf,
         source_path: PathBuf,
         source_digest: String,
+        source: Option<SourceProvenance>,
         previous: Option<ManagedEntry>,
     },
     RemoveStale {
@@ -107,6 +110,7 @@ pub fn build_plan(
                         rendered_path: item.rendered_path,
                         source_path: item.source_path,
                         source_digest: item.source_digest,
+                        source: item.source,
                         previous: Some(existing.clone()),
                     });
                 }
@@ -125,6 +129,7 @@ pub fn build_plan(
                         rendered_path: item.rendered_path,
                         source_path: item.source_path,
                         source_digest: item.source_digest,
+                        source: item.source,
                         previous: None,
                     });
                 }
@@ -334,6 +339,7 @@ mod tests {
                 source_path: temp.path().join("source/skills/sample"),
                 method: "symlink".to_string(),
                 source_digest: "sha256:old".to_string(),
+                source: None,
             },
         );
 
@@ -344,6 +350,7 @@ mod tests {
             rendered_path: rendered_root.join("sample"),
             source_path: temp.path().join("source/skills/sample"),
             source_digest: "sha256:new".to_string(),
+            source: None,
         }];
         let plan = build_plan(&target_root, &lock, desired).unwrap();
         assert_eq!(plan.operations.len(), 1);
@@ -371,6 +378,7 @@ mod tests {
             rendered_path: rendered.clone(),
             source_path: temp.path().join("source/skills/sample"),
             source_digest: "sha256:new".to_string(),
+            source: None,
         }];
 
         let plan = build_plan(&target_root, &lock, desired).unwrap();
@@ -398,6 +406,7 @@ mod tests {
             rendered_path: rendered,
             source_path: temp.path().join("source/skills/sample"),
             source_digest: "sha256:new".to_string(),
+            source: None,
         }];
 
         let plan = build_plan(&target_root, &lock, desired).unwrap();
@@ -446,6 +455,7 @@ mod tests {
                 rendered_path: temp.path().join("rendered/sample"),
                 source_path: temp.path().join("source/skills/sample"),
                 source_digest: "sha256:test".to_string(),
+                source: None,
                 previous: None,
             }],
             errors: vec!["unmanaged conflict at target/sample".to_string()],
@@ -465,6 +475,7 @@ mod tests {
             source_path: target_root.join("../source/skills/sample"),
             method: "symlink".to_string(),
             source_digest: source_digest.to_string(),
+            source: None,
         }
     }
 }

@@ -5,13 +5,16 @@ use skillctl_core::Request;
 const QUICK_START: &str = "\
 Quick start:
   skillctl list
+  skillctl update
   skillctl plan
   skillctl apply
   skillctl doctor
 
 Notes:
   - Edit canonical skills under ~/.skillctl/skills.
+  - Run skillctl update to refresh configured Git sources.
   - Runtime target directories should point at ~/.skillctl/rendered via symlinks.";
+
 #[derive(Debug, Parser)]
 #[command(
     name = "skillctl",
@@ -29,6 +32,8 @@ pub struct Cli {
 pub enum Command {
     #[command(about = "Preview target changes without mutating files")]
     Plan,
+    #[command(about = "Refresh configured Git skill sources")]
+    Update,
     #[command(about = "Render configured skills and update target symlinks")]
     Apply,
     #[command(about = "Check source, target, lockfile, and symlink health")]
@@ -51,6 +56,7 @@ impl From<Command> for Request {
     fn from(command: Command) -> Self {
         match command {
             Command::Plan => Request::Plan,
+            Command::Update => Request::Update,
             Command::Apply => Request::Apply,
             Command::Doctor => Request::Doctor,
             Command::List => Request::List,

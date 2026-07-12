@@ -9,9 +9,65 @@ pub struct Config {
     pub version: u32,
     pub targets: BTreeMap<String, TargetConfig>,
     #[serde(default)]
+    pub sources: BTreeMap<String, SourceConfig>,
+    #[serde(default)]
     pub policies: PolicyConfig,
     #[serde(default)]
     pub skills: BTreeMap<String, SkillConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct SourceConfig {
+    #[serde(rename = "type")]
+    pub kind: SourceKind,
+    pub repo: String,
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    #[serde(default)]
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceKind {
+    Git,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct SkillConfig {
+    #[serde(default)]
+    pub source: Option<String>,
+    pub path: PathBuf,
+    #[serde(default)]
+    pub expose: Vec<String>,
+}
+
+fn validate_relative_inside_root(label: &str, path: &Path) -> Result<()> {
+    if path.is_absolute() {
+        return Err(SkillctlError::Config(format!(
+            "{label} path {} must be relative",
+            path.display()
+        )));
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(SkillctlError::Config(format!(
+            "{label} path {} escapes checkout root",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn looks_like_git_url(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    text.starts_with("http://")
+        || text.starts_with("https://")
+        || text.starts_with("ssh://")
+        || text.starts_with("git@")
+        || text.ends_with(".git")
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -55,13 +111,6 @@ impl Default for PolicyConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct SkillConfig {
-    pub path: PathBuf,
-    #[serde(default)]
-    pub expose: Vec<String>,
-}
-
 impl Config {
     pub fn load_from(path: &Path, home: &Path) -> Result<Self> {
         let text = fs::read_to_string(path).map_err(|source| SkillctlError::Fs {
@@ -98,10 +147,12 @@ impl Config {
         Self {
             version: 1,
             targets,
+            sources: BTreeMap::new(),
             policies: PolicyConfig::default(),
             skills: BTreeMap::new(),
         }
     }
+
     fn validate(&self, root: &Path) -> Result<()> {
         if self.version != 1 {
             return Err(SkillctlError::Config(format!(
@@ -127,6 +178,14 @@ impl Config {
         validate_policy("duplicate_name", &self.policies.duplicate_name, "error")?;
         validate_policy("name_mismatch", &self.policies.name_mismatch, "error")?;
 
+        for (source_id, source) in &self.sources {
+            match source.kind {
+                SourceKind::Git => {}
+            }
+            validate_relative_inside_root(&format!("source {source_id}"), &source.path)?;
+        }
+
+        let normalized_root = normalize_lexical(root);
         for (skill_id, skill) in &self.skills {
             for target in &skill.expose {
                 if !self.targets.contains_key(target) {
@@ -136,18 +195,31 @@ impl Config {
                 }
             }
 
-            let resolved = if skill.path.is_absolute() {
-                normalize_lexical(&skill.path)
+            if let Some(source_id) = &skill.source {
+                if !self.sources.contains_key(source_id) {
+                    return Err(SkillctlError::Config(format!(
+                        "skill {skill_id} references unknown source {source_id}"
+                    )));
+                }
+                validate_relative_inside_root(&format!("skill {skill_id}"), &skill.path)?;
             } else {
-                normalize_lexical(&root.join(&skill.path))
-            };
-            let normalized_root = normalize_lexical(root);
-            if !resolved.starts_with(&normalized_root) {
-                return Err(SkillctlError::Config(format!(
-                    "skill {skill_id} path {} escapes {}",
-                    skill.path.display(),
-                    normalized_root.display()
-                )));
+                if looks_like_git_url(&skill.path) {
+                    return Err(SkillctlError::Config(format!(
+                        "skill {skill_id} path must be local; declare Git repositories under sources"
+                    )));
+                }
+                let resolved = if skill.path.is_absolute() {
+                    normalize_lexical(&skill.path)
+                } else {
+                    normalize_lexical(&root.join(&skill.path))
+                };
+                if !resolved.starts_with(&normalized_root) {
+                    return Err(SkillctlError::Config(format!(
+                        "skill {skill_id} path {} escapes {}",
+                        skill.path.display(),
+                        normalized_root.display()
+                    )));
+                }
             }
         }
 
@@ -348,6 +420,130 @@ skills:
         let error = Config::load_from(&config_path, home).unwrap_err();
         assert!(error.to_string().contains("escapes"));
         assert!(error.to_string().contains(".skillctl"));
+    }
+    #[test]
+    fn parses_git_sources_and_git_backed_skills() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = home.join(".skillctl/config.yaml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+sources:
+  shared:
+    type: git
+    repo: file:///tmp/shared-skills.git
+    ref: main
+    path: skills
+skills:
+  recap:
+    source: shared
+    path: recap
+    expose: [claude]
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from(&config_path, home).unwrap();
+        let source = &config.sources["shared"];
+        assert_eq!(source.kind, SourceKind::Git);
+        assert_eq!(source.repo, "file:///tmp/shared-skills.git");
+        assert_eq!(source.ref_name, "main");
+        assert_eq!(source.path, PathBuf::from("skills"));
+        assert_eq!(config.skills["recap"].source.as_deref(), Some("shared"));
+    }
+
+    #[test]
+    fn rejects_git_skill_with_unknown_source_id() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = home.join(".skillctl/config.yaml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+skills:
+  recap:
+    source: missing
+    path: recap
+    expose: [claude]
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load_from(&config_path, home)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("skill recap references unknown source missing"));
+    }
+
+    #[test]
+    fn rejects_git_source_path_escaping_checkout_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = home.join(".skillctl/config.yaml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+sources:
+  shared:
+    type: git
+    repo: file:///tmp/shared-skills.git
+    ref: main
+    path: ../outside
+skills: {}
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load_from(&config_path, home)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("source shared path ../outside escapes checkout root"));
+    }
+
+    #[test]
+    fn rejects_remote_url_in_skill_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_path = home.join(".skillctl/config.yaml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+skills:
+  recap:
+    path: https://github.com/azyu/my-skills.git
+    expose: [claude]
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load_from(&config_path, home)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error
+                .contains("skill recap path must be local; declare Git repositories under sources")
+        );
     }
 
     fn write_config(home: &Path, text: &str) -> PathBuf {

@@ -5,6 +5,7 @@ pub enum Request {
     Plan,
     Apply,
     Doctor,
+    Update,
     List,
     Prune,
     Unlink {

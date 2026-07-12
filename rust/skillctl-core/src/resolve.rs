@@ -18,7 +18,11 @@ pub fn resolve_skill(
     skill_path: &Path,
     target: &str,
 ) -> Result<ResolvedSkill> {
-    let package_dir = root.join(skill_path);
+    let package_dir = if skill_path.is_absolute() {
+        skill_path.to_path_buf()
+    } else {
+        root.join(skill_path)
+    };
     let variant_dir = package_dir.join("variants").join(target);
     let variant_skill = variant_dir.join("SKILL.md");
     let common_skill = package_dir.join("SKILL.md");
@@ -108,5 +112,24 @@ mod tests {
         let omp = resolve_skill(root, "sample", Path::new("skills/sample"), "omp").unwrap();
         assert_eq!(omp.source_dir, skill);
         assert_eq!(omp.target_name, "sample");
+    }
+
+    #[test]
+    fn resolves_absolute_package_path_without_root_join() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let package = temp.path().join("absolute-package");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("SKILL.md"),
+            "---\nname: absolute\ndescription: Absolute\n---\nAbsolute\n",
+        )
+        .unwrap();
+
+        let resolved = resolve_skill(&root, "absolute", &package, "claude").unwrap();
+
+        assert_eq!(resolved.package_dir, package);
+        assert_eq!(resolved.source_dir, package);
+        assert_eq!(resolved.target_name, "absolute");
     }
 }

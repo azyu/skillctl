@@ -1,4 +1,5 @@
 use crate::error::{Result, SkillctlError};
+use crate::sources::SourceProvenance;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -24,6 +25,8 @@ pub struct ManagedEntry {
     pub source_path: PathBuf,
     pub method: String,
     pub source_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceProvenance>,
 }
 
 impl TargetLock {
@@ -120,6 +123,7 @@ mod tests {
                 source_path: temp.path().join("source/skills/sample"),
                 method: "symlink".to_string(),
                 source_digest: "sha256:test".to_string(),
+                source: None,
             },
         );
 

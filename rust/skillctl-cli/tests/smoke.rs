@@ -11,10 +11,12 @@ fn help_prints_skillctl_commands_and_quick_start() {
         .stdout(predicates::str::contains("skillctl"))
         .stdout(predicates::str::contains("Materialize Agent Skills"))
         .stdout(predicates::str::contains("plan"))
+        .stdout(predicates::str::contains("update"))
         .stdout(predicates::str::contains("apply"))
         .stdout(predicates::str::contains("doctor"))
         .stdout(predicates::str::contains("version"))
         .stdout(predicates::str::contains("Quick start:"))
+        .stdout(predicates::str::contains("skillctl update"))
         .stdout(predicates::str::contains("skillctl plan"))
         .stdout(predicates::str::contains("skillctl apply"));
 }
@@ -43,7 +45,6 @@ fn version_prints_metadata() {
             .stdout(predicates::str::contains("built:"));
     }
 }
-
 #[test]
 fn subcommands_print_nonempty_output() {
     for subcommand in ["plan", "doctor", "list"] {
@@ -305,6 +306,368 @@ fn list_covers_empty_and_configured_skills() {
         .success()
         .stdout(predicates::str::contains("sample"));
 }
+#[test]
+fn update_clones_git_source_and_reports_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let remote = create_git_skill_repo(temp.path(), "initial skill text");
+    write_git_source_config(&home, remote.to_str().unwrap());
+
+    skillctl(&home)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("SOURCE"))
+        .stdout(predicates::str::contains("shared"))
+        .stdout(predicates::str::contains("CLONED"));
+
+    assert!(
+        home.join(".skillctl/repos/shared/skills/recap/SKILL.md")
+            .exists()
+    );
+    assert!(home.join(".skillctl/source-lock.json").exists());
+}
+#[test]
+fn update_reports_success_and_error_rows_for_later_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let alpha_root = temp.path().join("alpha");
+    let beta_root = temp.path().join("beta");
+    std::fs::create_dir_all(&alpha_root).unwrap();
+    std::fs::create_dir_all(&beta_root).unwrap();
+    let alpha = create_git_skill_repo(&alpha_root, "alpha skill text");
+    let beta = create_git_skill_repo(&beta_root, "beta skill text");
+    write_git_source_failure_config(&home, alpha.to_str().unwrap(), beta.to_str().unwrap());
+
+    skillctl(&home)
+        .arg("update")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("SOURCE"))
+        .stdout(predicate::str::contains("alpha"))
+        .stdout(predicate::str::contains("CLONED"))
+        .stdout(predicate::str::contains("beta"))
+        .stdout(predicate::str::contains("ERROR"));
+
+    let lock = std::fs::read_to_string(home.join(".skillctl/source-lock.json")).unwrap();
+    assert!(lock.contains("\"alpha\""));
+    assert!(!lock.contains("\"beta\""));
+}
+
+#[test]
+fn doctor_skips_missing_local_source_root_for_git_only_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    write_git_source_config(
+        &home,
+        create_git_skill_repo(temp.path(), "initial skill text")
+            .to_str()
+            .unwrap(),
+    );
+
+    skillctl(&home).arg("update").assert().success();
+    skillctl(&home).arg("apply").assert().success();
+
+    skillctl(&home)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("skillctl doctor: ok"))
+        .stdout(predicate::str::contains("missing source root").not());
+}
+
+#[test]
+fn update_plan_apply_materializes_git_backed_skill() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let remote = create_git_skill_repo(temp.path(), "initial skill text");
+    write_git_source_config(&home, remote.to_str().unwrap());
+
+    skillctl(&home).arg("update").assert().success();
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CREATE"))
+        .stdout(predicate::str::contains("claude/recap"));
+
+    skillctl(&home)
+        .arg("apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CREATE"))
+        .stdout(predicate::str::contains("claude/recap"));
+
+    let target = home.join(".claude/skills/recap");
+    assert!(target.symlink_metadata().unwrap().file_type().is_symlink());
+    let lock = std::fs::read_to_string(home.join(".claude/skills/.skillctl.lock.json")).unwrap();
+    assert!(lock.contains("\"source\""));
+    assert!(lock.contains("\"id\": \"shared\""));
+    assert!(lock.contains("\"commit\""));
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No changes."));
+}
+
+#[test]
+fn plan_fails_for_git_source_before_update() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let remote = create_git_skill_repo(temp.path(), "initial skill text");
+    write_git_source_config(&home, remote.to_str().unwrap());
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "source shared is not checked out; run skillctl update",
+        ));
+}
+#[test]
+fn apply_refreshes_git_source_lock_provenance_without_relinking() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let remote = create_git_skill_repo(temp.path(), "initial skill text");
+    write_git_source_config(&home, remote.to_str().unwrap());
+
+    skillctl(&home).arg("update").assert().success();
+    skillctl(&home).arg("apply").assert().success();
+
+    let lock_path = home.join(".claude/skills/.skillctl.lock.json");
+    let source_commit = |path: &Path| -> String {
+        let lock = std::fs::read_to_string(path).unwrap();
+        let marker = "\"commit\": \"";
+        let start = lock.find(marker).unwrap() + marker.len();
+        let end = lock[start..].find('"').unwrap() + start;
+        lock[start..end].to_owned()
+    };
+    let initial_commit = source_commit(&lock_path);
+
+    let advance = temp.path().join("git-advance");
+    run_git(
+        temp.path(),
+        &["clone", remote.to_str().unwrap(), "git-advance"],
+    );
+    run_git(&advance, &["config", "user.email", "test@example.com"]);
+    run_git(&advance, &["config", "user.name", "Test User"]);
+    std::fs::write(advance.join("README.md"), "unrelated commit").unwrap();
+    run_git(&advance, &["add", "README.md"]);
+    run_git(&advance, &["commit", "-m", "docs"]);
+    run_git(&advance, &["push", "origin", "main"]);
+
+    skillctl(&home)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("UPDATED"));
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("No changes."));
+
+    skillctl(&home)
+        .arg("apply")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("No changes."));
+
+    let updated_commit = source_commit(&lock_path);
+    assert_ne!(initial_commit, updated_commit);
+}
+
+#[test]
+fn changed_git_skill_input_updates_target() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let remote = create_git_skill_repo(temp.path(), "initial skill text");
+    write_git_source_config(&home, remote.to_str().unwrap());
+
+    skillctl(&home).arg("update").assert().success();
+    skillctl(&home).arg("apply").assert().success();
+
+    change_git_skill_body(temp.path(), "changed skill text");
+    skillctl(&home).arg("update").assert().success();
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("UPDATE claude/recap"));
+}
+
+fn write_git_source_failure_config(home: &Path, alpha_repo: &str, beta_repo: &str) {
+    let config_path = home.join(".skillctl/config.yaml");
+    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        config_path,
+        format!(
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+    method: symlink
+    enabled: true
+sources:
+  alpha:
+    type: git
+    repo: {alpha_repo}
+    ref: main
+    path: skills
+  beta:
+    type: git
+    repo: {beta_repo}
+    ref: missing
+    path: skills
+skills: {{}}
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn write_git_source_config(home: &Path, repo: &str) {
+    let config_path = home.join(".skillctl/config.yaml");
+    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        config_path,
+        format!(
+            r#"
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+    method: symlink
+    enabled: true
+sources:
+  shared:
+    type: git
+    repo: {repo}
+    ref: main
+    path: skills
+skills:
+  recap:
+    source: shared
+    path: recap
+    expose: [claude]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn create_git_skill_repo(root: &Path, body: &str) -> PathBuf {
+    let remote = root.join("remote.git");
+    let work = root.join("git-work");
+    run_git(
+        root,
+        &["init", "--bare", "--initial-branch=main", "remote.git"],
+    );
+    run_git(root, &["clone", remote.to_str().unwrap(), "git-work"]);
+    run_git(&work, &["checkout", "-b", "main"]);
+    run_git(&work, &["config", "user.email", "test@example.com"]);
+    run_git(&work, &["config", "user.name", "Test User"]);
+    std::fs::create_dir_all(work.join("skills/recap")).unwrap();
+    std::fs::write(
+        work.join("skills/recap/SKILL.md"),
+        format!("---\nname: recap\ndescription: test skill\n---\n\n{body}\n"),
+    )
+    .unwrap();
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "skill"]);
+    run_git(&work, &["push", "origin", "main"]);
+    remote
+}
+fn change_git_skill_body(root: &Path, body: &str) {
+    let work = root.join("git-work");
+    std::fs::write(
+        work.join("skills/recap/SKILL.md"),
+        format!("---\nname: recap\ndescription: test skill\n---\n\n{body}\n"),
+    )
+    .unwrap();
+    run_git(&work, &["add", "skills/recap/SKILL.md"]);
+    run_git(&work, &["commit", "-m", "change skill"]);
+    run_git(&work, &["push", "origin", "main"]);
+}
+
+fn run_git(cwd: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn changed_git_commit_without_skill_input_change_does_not_update_target() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let source_root = home.join(".skillctl/skills");
+    write_config(&home, &["claude"], "sample");
+    write_sample_skill(&home);
+    init_git_repo(&source_root);
+
+    skillctl(&home).arg("apply").assert().success();
+
+    let initial_commit = git_stdout(&source_root, &["rev-parse", "HEAD"]);
+    add_unrelated_git_commit(&source_root);
+    let updated_commit = git_stdout(&source_root, &["rev-parse", "HEAD"]);
+    assert_ne!(initial_commit, updated_commit);
+
+    skillctl(&home)
+        .arg("plan")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("No changes."));
+}
+
+fn init_git_repo(repo_root: &Path) {
+    run_git(repo_root, &["init"]);
+    run_git(repo_root, &["config", "user.email", "test@example.com"]);
+    run_git(repo_root, &["config", "user.name", "Skillctl Test"]);
+    run_git(repo_root, &["add", "sample/SKILL.md"]);
+    run_git(repo_root, &["commit", "-m", "initial skill"]);
+}
+
+fn add_unrelated_git_commit(repo_root: &Path) {
+    std::fs::write(
+        repo_root.join("README.md"),
+        "unrelated
+",
+    )
+    .unwrap();
+    run_git(repo_root, &["add", "README.md"]);
+    run_git(repo_root, &["commit", "-m", "unrelated"]);
+}
+
+fn git_stdout(cwd: &Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
 
 fn skillctl(home: &Path) -> Command {
     let mut cmd = Command::cargo_bin("skillctl").unwrap();
@@ -363,7 +726,8 @@ fn write_lock(home: &Path, target: &str, target_root: &Path, rendered: &Path, sk
       "rendered_path": "{}",
       "source_path": "{}",
       "method": "symlink",
-      "source_digest": "sha256:old"
+      "source_digest": "sha256:old",
+      "source": null
     }}
   }}
 }}
