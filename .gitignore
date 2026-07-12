@@ -1,5 +1,11 @@
 # Rust build output
 rust/target/
 
+# Local git worktrees
+.worktrees/
+
+# Local Superpowers workflow scratch
+.superpowers/
+
 # OS metadata
 .DS_Store
