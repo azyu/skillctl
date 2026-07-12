@@ -13,6 +13,7 @@
 ## 특징
 
 - 원본 스킬은 `~/.skillctl/skills/` 아래에 보관
+- `skillctl update`로 수동 Git-backed 스킬 소스를 `~/.skillctl/repos/<source_id>/` 아래에 동기화
 - 실행 환경별 결과물은 `~/.skillctl/rendered/<target>/<skill>/` 아래에 생성
 - `~/.claude/skills`, `~/.agents/skills` 같은 실행 환경의 스킬 디렉터리에 심볼릭 링크로 연결
 - v1 설정 파일은 `~/.skillctl/config.yaml`의 YAML만 지원
@@ -128,7 +129,39 @@ skills:
     expose: [claude, codex]
 ```
 
-### 3. 변경 계획 확인
+로컬 스킬은 `skills:` 아래에 두고, Git-backed 소스는 별도로 선언합니다:
+
+```yaml
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+    method: symlink
+    enabled: true
+sources:
+  shared:
+    type: git
+    repo: https://github.com/you/agent-skills.git
+    ref: main
+    path: skills
+skills:
+  recap:
+    source: shared
+    path: recap
+    expose: [claude]
+```
+
+`skillctl update`는 `~/.skillctl/source-lock.json`에 소스 상태를 기록하고, 체크아웃 캐시는 `~/.skillctl/repos/<source_id>/` 아래에 둡니다.
+
+### 3. Git 소스 동기화
+
+```bash
+skillctl update
+```
+
+`skillctl update`는 설정된 Git 소스를 `~/.skillctl/repos/<source_id>/`로 복제하거나 가져옵니다. 이 체크아웃은 `skillctl`이 소유하는 캐시이며 update 중 clean reset될 수 있습니다. `skillctl plan`과 `skillctl apply`는 원격을 조회하지 않고, 이미 동기화된 소스 상태만 사용합니다. 대상 갱신 기준은 commit hash 자체가 아니라 렌더된 입력 digest입니다.
+
+### 4. 변경 계획 확인
 
 ```bash
 skillctl plan
@@ -139,21 +172,21 @@ skillctl plan
 | 라벨 | 의미 |
 |------|------|
 | `CREATE` | 대상 심볼릭 링크가 아직 없음 |
-| `UPDATE` | 관리 중인 대상에 새 렌더링 경로 또는 원본 digest 반영이 필요함 |
+| `UPDATE` | 관리 중인 대상에 새 렌더링 경로 또는 렌더된 입력 digest 반영이 필요함 |
 | `REMOVE_STALE` | lockfile에는 있지만 현재 설정에서는 더 이상 원하지 않는 관리 항목이 있음 |
 | `ERROR` | 관리되지 않는 충돌 또는 관리 대상 경로 이탈 때문에 변경할 수 없음 |
 
 `skillctl plan`은 `ERROR` 행이 하나라도 있으면 exit code `1`로 종료합니다.
 
-### 4. 안전하게 적용
+### 5. 안전하게 적용
 
 ```bash
 skillctl apply
 ```
 
-`apply`는 스킬을 해석하고 digest를 계산한 뒤 변경 계획을 만듭니다. 원하는 대상 경로에 충돌이 있거나 관리 대상 경로가 이탈했으면 변경 전에 중단합니다. 문제가 없으면 `~/.skillctl/rendered/` 아래에 패키지를 렌더링하고, 대상 심볼릭 링크를 만들거나 갱신한 뒤 각 대상의 `.skillctl.lock.json`을 씁니다.
+`skillctl apply`는 스킬을 해석하고 digest를 계산한 뒤 변경 계획을 만들며 원격을 조회하지 않습니다. 원하는 대상 경로에 충돌이 있거나 관리 대상 경로가 이탈했으면 변경 전에 중단합니다. 문제가 없으면 `~/.skillctl/rendered/` 아래에 패키지를 렌더링하고, 대상 심볼릭 링크를 만들거나 갱신한 뒤 각 대상의 `.skillctl.lock.json`을 씁니다.
 
-### 5. 상태 진단
+### 6. 상태 진단
 
 ```bash
 skillctl doctor
@@ -166,6 +199,7 @@ skillctl doctor
 | 명령 | 용도 |
 |------|------|
 | `skillctl list` | 설정된 스킬 ID 목록 출력 |
+| `skillctl update` | Git 소스를 `~/.skillctl/repos/<source_id>/` 아래로 동기화 |
 | `skillctl plan` | 재현 가능한 변경 계획과 차단 오류 출력 |
 | `skillctl apply` | 원하는 스킬을 렌더링하고 대상 심볼릭 링크와 lockfile 갱신 |
 | `skillctl doctor` | 원본 루트, 대상 루트, lockfile, 심볼릭 링크, 충돌 진단 |
@@ -183,10 +217,17 @@ skillctl doctor
 - v1 policy 값만 허용
 - 스킬 경로가 `~/.skillctl/` 안에 머무름
 
-`skillctl`은 원본, 렌더링 결과, 실행 환경의 대상 디렉터리를 분리합니다:
+Git-backed 소스 상태는 `~/.skillctl/source-lock.json`에 저장되고, `skillctl`이 소유하는 Git 체크아웃은 `~/.skillctl/repos/<source_id>/` 아래에 둡니다.
+`skillctl update`는 그 체크아웃을 clean reset할 수 있습니다.
+`skillctl plan`과 `skillctl apply`는 원격을 조회하지 않습니다.
+대상 갱신 기준은 commit hash 자체가 아니라 렌더된 입력 digest입니다.
+
+`skillctl`은 원본, Git 체크아웃 캐시, 렌더링 결과, 실행 환경의 대상 디렉터리를 분리합니다:
 
 ```text
 ~/.skillctl/skills/             # 원본 스킬
+~/.skillctl/repos/              # Git 체크아웃 캐시
+~/.skillctl/source-lock.json    # Git 소스 상태
 ~/.skillctl/rendered/           # 실행 환경별로 생성된 스킬 트리
 ~/.claude/skills/               # Claude Code 대상 디렉터리
 ~/.agents/skills/               # Codex 대상 디렉터리

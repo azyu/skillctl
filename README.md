@@ -13,6 +13,7 @@
 ## Features
 
 - Canonical skill source under `~/.skillctl/skills/`
+- Manual Git-backed skill sources synced by `skillctl update` into `~/.skillctl/repos/<source_id>/`
 - Target-specific rendered trees under `~/.skillctl/rendered/<target>/<skill>/`
 - Symlink materialization into runtime target directories such as `~/.claude/skills` and `~/.agents/skills`
 - YAML-only v1 config at `~/.skillctl/config.yaml`
@@ -128,7 +129,39 @@ skills:
     expose: [claude, codex]
 ```
 
-### 3. Inspect the plan
+Local skills stay under `skills:`. Git-backed sources are declared separately:
+
+```yaml
+version: 1
+targets:
+  claude:
+    path: ~/.claude/skills
+    method: symlink
+    enabled: true
+sources:
+  shared:
+    type: git
+    repo: https://github.com/you/agent-skills.git
+    ref: main
+    path: skills
+skills:
+  recap:
+    source: shared
+    path: recap
+    expose: [claude]
+```
+
+`skillctl update` records source state in `~/.skillctl/source-lock.json` and keeps the checkout cache under `~/.skillctl/repos/<source_id>/`.
+
+### 3. Sync Git sources
+
+```bash
+skillctl update
+```
+
+`skillctl update` clones or fetches configured Git sources into `~/.skillctl/repos/<source_id>/`. Those checkouts are tool-owned caches and may be clean-reset during update. `skillctl plan` and `skillctl apply` do not fetch from remotes; they work from the already-synced source state. Target updates are based on the rendered skill input digest, not commit hash alone.
+
+### 4. Inspect the plan
 
 ```bash
 skillctl plan
@@ -139,21 +172,21 @@ Plan output is deterministic and uses these labels:
 | Label | Meaning |
 |-------|---------|
 | `CREATE` | target symlink does not exist yet |
-| `UPDATE` | managed target needs a new rendered path or source digest |
+| `UPDATE` | managed target needs a new rendered path or rendered input digest |
 | `REMOVE_STALE` | lockfile contains a managed entry no longer desired by config |
 | `ERROR` | unmanaged conflict or managed-path drift blocks mutation |
 
 `skillctl plan` exits with code `1` when any `ERROR` row exists.
 
-### 4. Apply safely
+### 5. Apply safely
 
 ```bash
 skillctl apply
 ```
 
-`apply` resolves skills, computes digests, builds the plan, aborts before mutation if desired target paths conflict or managed paths drift, renders packages under `~/.skillctl/rendered/`, creates or updates target symlinks, and writes each target's `.skillctl.lock.json`.
+`skillctl apply` resolves skills, computes digests, builds the plan, and does not fetch from remotes. It aborts before mutation if desired target paths conflict or managed paths drift, renders packages under `~/.skillctl/rendered/`, creates or updates target symlinks, and writes each target's `.skillctl.lock.json`.
 
-### 5. Check health
+### 6. Check health
 
 ```bash
 skillctl doctor
@@ -166,6 +199,7 @@ skillctl doctor
 | Command | Purpose |
 |---------|---------|
 | `skillctl list` | list configured skill IDs |
+| `skillctl update` | sync configured Git sources into `~/.skillctl/repos/<source_id>/` |
 | `skillctl plan` | print deterministic planned operations and blocking errors |
 | `skillctl apply` | render desired skills, materialize target symlinks, update lockfiles |
 | `skillctl doctor` | inspect source roots, target roots, lockfiles, symlinks, and conflicts |
@@ -183,10 +217,17 @@ Config validation enforces:
 - v1 policy values only
 - skill paths stay inside `~/.skillctl/`
 
-`skillctl` separates source, rendered output, and runtime targets:
+Git-backed source state is stored in `~/.skillctl/source-lock.json`, and tool-owned Git checkouts live under `~/.skillctl/repos/<source_id>/`.
+`skillctl update` may clean-reset those tool-owned checkouts.
+`skillctl plan` and `skillctl apply` do not fetch from remotes.
+Managed target updates are based on rendered skill input digests, not commit hashes alone.
+
+`skillctl` separates source, Git checkout cache, rendered output, and runtime targets:
 
 ```text
 ~/.skillctl/skills/             # canonical source
+~/.skillctl/repos/              # tool-owned Git checkout cache
+~/.skillctl/source-lock.json    # Git source state
 ~/.skillctl/rendered/           # generated target-specific skill trees
 ~/.claude/skills/               # Claude Code target
 ~/.agents/skills/               # Codex target
