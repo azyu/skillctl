@@ -8,14 +8,14 @@
 
 > A small, filesystem-safe Agent Skills materialization CLI built in Rust.
 
-`skillctl` keeps `~/.skillctl/` as the canonical source of Agent Skills and materializes complete runtime-specific skill directories for tools such as Claude Code and Codex.
+`skillctl` keeps `~/.skillctl/` as the canonical source of Agent Skills and materializes complete runtime-specific skill directories for tools such as Claude Code, Codex, and Pi.
 
 ## Features
 
 - Canonical skill source under `~/.skillctl/skills/`
 - Manual Git-backed skill sources synced by `skillctl update` into `~/.skillctl/repos/<source_id>/`
 - Target-specific rendered trees under `~/.skillctl/rendered/<target>/<skill>/`
-- Symlink materialization into runtime target directories such as `~/.claude/skills` and `~/.agents/skills`
+- Enabled default symlink targets for Claude Code (`~/.claude/skills`), Codex (`~/.agents/skills`), and Pi (`~/.pi/agent/skills`)
 - YAML-only v1 config at `~/.skillctl/config.yaml`
 - Target variant resolution with common `SKILL.md` fallback
 - Package-level and target-variant resource directory rendering for `references/`, `scripts/`, `agents/`, `assets/`, and `examples/`
@@ -100,12 +100,14 @@ Target-specific variants can override `SKILL.md` and target-specific resource di
 ├── SKILL.md
 ├── references/
 └── variants/
-    └── claude/
+    └── pi/
         ├── SKILL.md
         └── scripts/
 ```
 
 Current v1 rendering rule: `skillctl` uses the selected target variant's `SKILL.md` when present, falls back to the common `SKILL.md`, copies package-level resource directories, then overlays the selected variant's resource directories. Supported resource directory names are `references/`, `scripts/`, `agents/`, `assets/`, and `examples/`.
+
+For target exactly `pi`, the selected common or `variants/pi/SKILL.md` is copied unchanged and must contain a nonblank YAML string `description`. This validation is Pi-specific: description-less skills remain valid for Claude Code, Codex, and arbitrary custom targets.
 
 ### 2. Write config
 
@@ -122,12 +124,18 @@ targets:
     path: ~/.agents/skills
     method: symlink
     enabled: true
+  pi:
+    path: ~/.pi/agent/skills
+    method: symlink
+    enabled: true
 policies: {}
 skills:
   example-skill:
     path: skills/example-skill
-    expose: [claude, codex]
+    expose: [claude, codex, pi]
 ```
+
+An existing `~/.skillctl/config.yaml` remains authoritative and is not merged with built-in defaults. Add the `pi` target and `pi` exposure explicitly when upgrading an existing configuration.
 
 Local skills stay under `skills:`. Git-backed sources are declared separately:
 
@@ -217,6 +225,8 @@ Config validation enforces:
 - v1 policy values only
 - skill paths stay inside `~/.skillctl/`
 
+When `plan` or `apply` resolves target exactly `pi`, the selected `SKILL.md` must have a nonblank YAML string `description`.
+
 Git-backed source state is stored in `~/.skillctl/source-lock.json`, and tool-owned Git checkouts live under `~/.skillctl/repos/<source_id>/`.
 `skillctl update` may clean-reset those tool-owned checkouts.
 `skillctl plan` and `skillctl apply` do not fetch from remotes.
@@ -231,8 +241,11 @@ Managed target updates are based on rendered skill input digests, not commit has
 ~/.skillctl/rendered/           # generated target-specific skill trees
 ~/.claude/skills/               # Claude Code target
 ~/.agents/skills/               # Codex target
+~/.pi/agent/skills/             # Pi target
 <target>/.skillctl.lock.json    # per-target ownership lockfile
 ```
+
+Pi can discover skills from more than one root. Exposing the same skill through `~/.pi/agent/skills` and another Pi-discovered root can create duplicate-name resolution; `skillctl` does not control Pi's discovery precedence.
 
 Mutation commands follow these rules:
 

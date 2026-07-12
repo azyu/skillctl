@@ -8,14 +8,14 @@
 
 > Rust로 작성된, 파일시스템 안전성을 우선하는 작은 Agent Skills 배포 CLI입니다.
 
-`skillctl`은 `~/.skillctl/`을 Agent Skills의 원본 저장소로 사용하고, Claude Code와 Codex 같은 실행 환경이 바로 읽을 수 있는 완성된 스킬 디렉터리를 만들어 연결합니다.
+`skillctl`은 `~/.skillctl/`을 Agent Skills의 원본 저장소로 사용하고, Claude Code, Codex, Pi 같은 실행 환경이 바로 읽을 수 있는 완성된 스킬 디렉터리를 만들어 연결합니다.
 
 ## 특징
 
 - 원본 스킬은 `~/.skillctl/skills/` 아래에 보관
 - `skillctl update`로 수동 Git-backed 스킬 소스를 `~/.skillctl/repos/<source_id>/` 아래에 동기화
 - 실행 환경별 결과물은 `~/.skillctl/rendered/<target>/<skill>/` 아래에 생성
-- `~/.claude/skills`, `~/.agents/skills` 같은 실행 환경의 스킬 디렉터리에 심볼릭 링크로 연결
+- Claude Code(`~/.claude/skills`), Codex(`~/.agents/skills`), Pi(`~/.pi/agent/skills`)를 기본으로 활성화하고 심볼릭 링크로 연결
 - v1 설정 파일은 `~/.skillctl/config.yaml`의 YAML만 지원
 - 실행 환경별 변형 파일이 있으면 우선 사용하고, 없으면 공통 `SKILL.md`를 사용
 - 공통 리소스와 실행 환경별 리소스 디렉터리 `references/`, `scripts/`, `agents/`, `assets/`, `examples/`를 함께 렌더링
@@ -100,12 +100,14 @@ EOF
 ├── SKILL.md
 ├── references/
 └── variants/
-    └── claude/
+    └── pi/
         ├── SKILL.md
         └── scripts/
 ```
 
 현재 v1 렌더링 규칙: `skillctl`은 선택한 실행 환경의 변형 `SKILL.md`가 있으면 그것을 사용하고, 없으면 공통 `SKILL.md`를 사용합니다. 그다음 공통 리소스 디렉터리를 복사하고, 선택한 실행 환경의 리소스 디렉터리를 그 위에 덮어씁니다. 지원하는 리소스 디렉터리 이름은 `references/`, `scripts/`, `agents/`, `assets/`, `examples/`입니다.
+
+대상이 정확히 `pi`이면 선택된 공통 파일 또는 `variants/pi/SKILL.md`를 변경 없이 복사하며, YAML 문자열 `description`이 비어 있지 않아야 합니다. 이 검증은 Pi에만 적용되므로 `description`이 없는 스킬도 Claude Code, Codex, 임의의 사용자 정의 대상에서는 계속 사용할 수 있습니다.
 
 ### 2. 설정 작성
 
@@ -122,12 +124,18 @@ targets:
     path: ~/.agents/skills
     method: symlink
     enabled: true
+  pi:
+    path: ~/.pi/agent/skills
+    method: symlink
+    enabled: true
 policies: {}
 skills:
   example-skill:
     path: skills/example-skill
-    expose: [claude, codex]
+    expose: [claude, codex, pi]
 ```
+
+기존 `~/.skillctl/config.yaml`은 그대로 우선 적용되며 내장 기본값과 병합되지 않습니다. 기존 설정을 업그레이드할 때는 `pi` 대상과 `pi` 노출을 명시적으로 추가해야 합니다.
 
 로컬 스킬은 `skills:` 아래에 두고, Git-backed 소스는 별도로 선언합니다:
 
@@ -217,6 +225,8 @@ skillctl doctor
 - v1 policy 값만 허용
 - 스킬 경로가 `~/.skillctl/` 안에 머무름
 
+`plan` 또는 `apply`가 정확히 `pi`인 대상을 해석할 때, 선택된 `SKILL.md`에는 비어 있지 않은 YAML 문자열 `description`이 있어야 합니다.
+
 Git-backed 소스 상태는 `~/.skillctl/source-lock.json`에 저장되고, `skillctl`이 소유하는 Git 체크아웃은 `~/.skillctl/repos/<source_id>/` 아래에 둡니다.
 `skillctl update`는 그 체크아웃을 clean reset할 수 있습니다.
 `skillctl plan`과 `skillctl apply`는 원격을 조회하지 않습니다.
@@ -231,8 +241,11 @@ Git-backed 소스 상태는 `~/.skillctl/source-lock.json`에 저장되고, `ski
 ~/.skillctl/rendered/           # 실행 환경별로 생성된 스킬 트리
 ~/.claude/skills/               # Claude Code 대상 디렉터리
 ~/.agents/skills/               # Codex 대상 디렉터리
+~/.pi/agent/skills/             # Pi 대상 디렉터리
 <target>/.skillctl.lock.json    # 대상별 소유권 lockfile
 ```
+
+Pi는 둘 이상의 루트에서 스킬을 찾을 수 있습니다. 같은 스킬을 `~/.pi/agent/skills`와 Pi가 검색하는 다른 루트에 함께 노출하면 이름이 중복되어 해석 문제가 생길 수 있으며, `skillctl`은 Pi의 검색 우선순위를 제어하지 않습니다.
 
 변경 명령은 다음 규칙을 따릅니다:
 
