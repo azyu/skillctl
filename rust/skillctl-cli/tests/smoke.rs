@@ -9,16 +9,36 @@ fn help_prints_skillctl_commands_and_quick_start() {
         .assert()
         .success()
         .stdout(predicates::str::contains("skillctl"))
+        .stdout(predicates::str::contains(format!(
+            "skillctl v{} - Materialize Agent Skills into runtime-specific skill directories",
+            env!("CARGO_PKG_VERSION")
+        )))
         .stdout(predicates::str::contains("Materialize Agent Skills"))
         .stdout(predicates::str::contains("plan"))
         .stdout(predicates::str::contains("update"))
         .stdout(predicates::str::contains("apply"))
         .stdout(predicates::str::contains("doctor"))
         .stdout(predicates::str::contains("version"))
+        .stdout(predicates::str::contains(
+            "Commands:\n  list     List configured canonical skill IDs\n  update   Refresh configured Git skill sources\n  plan     Preview target changes without mutating files",
+        ))
         .stdout(predicates::str::contains("Quick start:"))
         .stdout(predicates::str::contains("skillctl update"))
         .stdout(predicates::str::contains("skillctl plan"))
-        .stdout(predicates::str::contains("skillctl apply"));
+        .stdout(predicates::str::contains("skillctl apply"))
+        .stdout(predicates::str::contains("Paths:"))
+        .stdout(predicates::str::contains(
+            "config:   ~/.skillctl/config.yaml",
+        ))
+        .stdout(predicates::str::contains(
+            "lockfile: <target>/.skillctl.lock.json",
+        ))
+        .stdout(predicates::str::contains("Exit codes:"))
+        .stdout(predicates::str::contains("2  Invalid CLI usage"))
+        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains(
+            "skillctl unlink example-skill --target claude",
+        ));
 }
 
 #[test]
@@ -28,6 +48,26 @@ fn no_args_prints_root_help() {
         .success()
         .stdout(predicates::str::contains("Usage: skillctl"))
         .stdout(predicates::str::contains("Quick start:"));
+}
+
+#[test]
+fn unlink_help_describes_skill_and_target() {
+    let mut cmd = Command::cargo_bin("skillctl").unwrap();
+    cmd.args(["unlink", "--help"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "<SKILL>  Configured skill ID to unlink",
+        ))
+        .stdout(predicates::str::contains(
+            "--target <TARGET>  Limit unlinking to one configured target",
+        ));
+}
+
+#[test]
+fn invalid_cli_usage_exits_two() {
+    let mut cmd = Command::cargo_bin("skillctl").unwrap();
+    cmd.arg("unknown-command").assert().code(2);
 }
 
 #[test]
