@@ -1,6 +1,6 @@
 ---
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-15
 ---
 # TASKS
 
@@ -39,6 +39,7 @@ updated: 2026-07-05
 
 - [x] Split `README.md` into English/Korean README files following the `bitbucket-cli` bilingual structure.
 - [x] Added GitHub release automation and Homebrew tap template support for `skillctl`.
+- [x] Improved CLI help with a versioned header, workflow-ordered commands, managed paths, exit codes, examples, and described `unlink` arguments.
 
 ## Pending Observable Work
 
@@ -276,3 +277,8 @@ updated: 2026-07-05
 - 2026-07-05: Pushed README badge update and verified CI:
   - Commit `f92685b docs: add readme badges` was pushed to `origin/main`.
   - GitHub Actions CI run `28736739680` completed successfully; Rust job passed formatting and test steps.
+- 2026-07-15: CLI help improvement verification passed:
+  - `cargo test --manifest-path rust/Cargo.toml -p skillctl-cli --test smoke` passed: 29 tests, including invalid-usage exit code `2`.
+  - `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` passed.
+  - Root help rendered the versioned header, workflow-ordered commands, `Paths`, `Exit codes`, and `Examples`; `skillctl unlink --help` rendered descriptions for `<SKILL>` and `--target <TARGET>`.
+  - Commit `b22a360` (`feat: improve cli help output`) was pushed to `origin/main`.
